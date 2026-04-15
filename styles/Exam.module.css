@@ -58,6 +58,49 @@
   opacity: 0.8;
 }
 
+.securityBanner {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 30px;
+  background: #fff3cd;
+  border-bottom: 1px solid #ffe69c;
+  color: #7a5d00;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.fullscreenOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(15, 23, 42, 0.82);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.fullscreenDialog {
+  width: min(100%, 460px);
+  background: white;
+  border-radius: 16px;
+  padding: 28px;
+  text-align: center;
+  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.3);
+}
+
+.fullscreenDialog h3 {
+  margin: 0 0 12px 0;
+  color: #1f2937;
+}
+
+.fullscreenDialog p {
+  margin: 0 0 20px 0;
+  color: #4b5563;
+  line-height: 1.6;
+}
+
 .sectionNav {
   background: #f8f9fa;
   padding: 20px 30px;
@@ -316,6 +359,11 @@
   .sectionTabs {
     justify-content: center;
   }
+
+  .securityBanner {
+    flex-direction: column;
+    padding: 16px 20px;
+  }
   
   .questionCard {
     padding: 15px;
@@ -494,5 +542,9 @@
   
   .answerCard {
     padding: 15px;
+  }
+
+  .fullscreenDialog {
+    padding: 22px;
   }
 }

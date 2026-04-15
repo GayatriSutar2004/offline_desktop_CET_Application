@@ -72,6 +72,7 @@ router.get('/:examId/questions/:studentId', async (req, res) => {
             SELECT 
                 q.question_id,
                 q.question_text,
+                COALESCE(q.section_name, 'General') as section_name,
                 q.marks,
                 q.negative_marks,
                 q.difficulty_level,
@@ -96,6 +97,7 @@ router.get('/:examId/questions/:studentId', async (req, res) => {
         const formattedQuestions = questions.map(q => ({
             question_id: q.question_id,
             question_text: q.question_text,
+            section_name: q.section_name || 'General',
             options: q.options_text ? q.options_text.split('|') : [],
             correct_answer: q.correct_answer || '',
             marks: q.marks,
@@ -117,7 +119,7 @@ router.get('/:examId/questions/:studentId', async (req, res) => {
         // Group questions by sections
         const questionsBySection = {};
         formattedQuestions.forEach(question => {
-            const section = question.section || 'General';
+            const section = question.section_name || 'General';
             if (!questionsBySection[section]) {
                 questionsBySection[section] = [];
             }
