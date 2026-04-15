@@ -31,13 +31,26 @@ export default function AdminDashboard() {
   useEffect(() => {
     const fetchAdminData = async () => {
       try {
+        const storedAdmin = typeof window !== 'undefined' ? localStorage.getItem('admin') : null;
+        if (storedAdmin) {
+          const parsedAdmin = JSON.parse(storedAdmin);
+          setAdminData(parsedAdmin);
+          setEditName(parsedAdmin.admin_name);
+          setEditEmail(parsedAdmin.email);
+          setEditMobile(parsedAdmin.mobile_no);
+        }
+
         const res = await fetch("http://localhost:3001/api/admin/");
         const data = await res.json();
         if (data.length > 0) {
-          setAdminData(data[0]);
-          setEditName(data[0].admin_name);
-          setEditEmail(data[0].email);
-          setEditMobile(data[0].mobile_no);
+          const matchedAdmin = storedAdmin
+            ? data.find((admin) => admin.admin_id === JSON.parse(storedAdmin).admin_id) || data[0]
+            : data[0];
+
+          setAdminData(matchedAdmin);
+          setEditName(matchedAdmin.admin_name);
+          setEditEmail(matchedAdmin.email);
+          setEditMobile(matchedAdmin.mobile_no);
         }
       } catch (err) {
         console.log(err);
@@ -120,7 +133,22 @@ export default function AdminDashboard() {
   // Logout function
   const handleLogout = () => {
     if (window.confirm("Are you sure you want to logout?")) {
+      localStorage.removeItem('admin');
       window.location.href = "/";
+    }
+  };
+
+  // Fetch next roll number
+  const fetchNextRollNo = async () => {
+    try {
+      const res = await fetch("http://localhost:3001/api/students/next-roll-no");
+      const data = await res.json();
+      if (data.next_roll_no) {
+        setSRoll(data.next_roll_no);
+        setSEmail(data.next_roll_no);
+      }
+    } catch (err) {
+      console.log("Error fetching next roll number:", err);
     }
   };
 
@@ -134,6 +162,13 @@ export default function AdminDashboard() {
       alert("Error fetching students");
     }
   };
+
+  // Load initial roll number when switching to student view
+  useEffect(() => {
+    if (activeMenu === "create" && createView === "student") {
+      fetchNextRollNo();
+    }
+  }, [activeMenu, createView]);
 
   const fetchExams = async () => {
     try {
@@ -299,11 +334,15 @@ export default function AdminDashboard() {
       });
 
       const data = await res.json();
-      alert(data.message);
-      // Reset form
-      setSName(""); setSBatch(""); setSYear(""); setSRoll("");
-      setSMobile(""); setSEmail(""); setSPassword(""); setSConfirmPassword("");
-      fetchStudents();
+      alert(data.message || data.error);
+      if (res.ok) {
+        // Reset form and fetch next roll number
+        setSName(""); setSBatch(""); setSYear("");
+        setSMobile(""); setSPassword(""); setSConfirmPassword("");
+        setSExamType("NDA");
+        fetchStudents();
+        fetchNextRollNo(); // Auto-generate next roll number
+      }
     } catch (err) {
       console.log(err);
       alert("Error adding student");
@@ -319,6 +358,8 @@ export default function AdminDashboard() {
   const [cExamDate, setCExamDate] = useState("");
   const [cExamTime, setCExamTime] = useState("09:00");
   const [cTimePeriod, setTimePeriod] = useState("AM");
+  const [cTargetBatch, setCTargetBatch] = useState("");
+  const [cTargetYear, setCTargetYear] = useState("");
   const [cFile, setCFile] = useState(null);
 
   const createExam = async () => {
@@ -375,6 +416,8 @@ export default function AdminDashboard() {
       formData.append('duration_minutes', parseInt(cHour)*60 + parseInt(cMinute));
       formData.append('total_questions', cQuestions);
       formData.append('exam_type', cExamType);
+      formData.append('target_batch_name', cTargetBatch);
+      formData.append('target_admission_year', cTargetYear);
       formData.append('exam_date', cExamDate);
       // Convert 12-hour format to 24-hour format for MySQL
       let time24Hour = cExamTime;
@@ -385,6 +428,7 @@ export default function AdminDashboard() {
         time24Hour = '00:00';
       }
       formData.append('exam_time', time24Hour);
+      formData.append('created_by', adminData?.admin_id || 1);
       formData.append('file', cFile);
       
       console.log("FormData created successfully");
@@ -424,13 +468,16 @@ export default function AdminDashboard() {
       console.log("Response data:", data);
       
       if (data.message) {
-        alert(data.message);
+        const assignmentMessage = data.students_assigned !== undefined
+          ? ` Assigned to ${data.students_assigned} student(s).`
+          : "";
+        alert(`${data.message}${assignmentMessage}`);
       } else {
         alert("Exam created successfully!");
       }
       
       // Reset form
-      setCExamName(""); setCHour(""); setCMinute(""); setCQuestions(""); setCExamType(""); setCFile(null);
+      setCExamName(""); setCHour(""); setCMinute(""); setCQuestions(""); setCExamType(""); setCTargetBatch(""); setCTargetYear(""); setCFile(null);
       console.log("Form reset completed");
       // Refresh exams list
       fetchExams();
@@ -526,6 +573,11 @@ export default function AdminDashboard() {
                     </select>
                   </div>
 
+                  <div className={styles.row}>
+                    <input value={cTargetBatch} onChange={(e)=>setCTargetBatch(e.target.value)} placeholder="Target Batch (e.g. NDA-A)"/>
+                    <input value={cTargetYear} onChange={(e)=>setCTargetYear(e.target.value)} placeholder="Target Admission Year (e.g. 2024)"/>
+                  </div>
+
                   <input value={cQuestions} onChange={(e)=>setCQuestions(e.target.value)} placeholder="Total Questions"/>
 
                   <input 
@@ -558,11 +610,11 @@ export default function AdminDashboard() {
                   <h3>Add Student</h3>
 
                   <input value={sName} onChange={(e)=>setSName(e.target.value)} placeholder="Student Name"/>
-                  <input value={sBatch} onChange={(e)=>setSBatch(e.target.value)} placeholder="Batch"/>
-                  <input value={sYear} onChange={(e)=>setSYear(e.target.value)} placeholder="Admission Year"/>
-                  <input value={sRoll} onChange={(e)=>setSRoll(e.target.value)} placeholder="Roll No"/>
-                  <input value={sMobile} onChange={(e)=>setSMobile(e.target.value)} placeholder="Mobile"/>
-                  <input value={sEmail} onChange={(e)=>setSEmail(e.target.value)} placeholder="Email"/>
+                  <input value={sBatch} onChange={(e)=>setSBatch(e.target.value)} placeholder="Batch (e.g. NDA-A)"/>
+                  <input value={sYear} onChange={(e)=>setSYear(e.target.value)} placeholder="Admission Year (e.g. 2024)"/>
+                  <input value={sRoll} readOnly style={{backgroundColor: "#e8f0fe", cursor: "not-allowed"}} placeholder="Roll No (Auto-generated)"/>
+                  <input value={sMobile} onChange={(e)=>setSMobile(e.target.value)} placeholder="Mobile Number"/>
+                  <input value={sEmail} readOnly style={{backgroundColor: "#e8f0fe", cursor: "not-allowed"}} placeholder="Email (Auto-generated)"/>
                   <select value={sExamType} onChange={(e)=>setSExamType(e.target.value)}>
                     <option value="">Select Exam Type</option>
                     <option value="NDA">NDA</option>
@@ -589,68 +641,227 @@ export default function AdminDashboard() {
             <>
               <h2>Student Management - Comprehensive View</h2>
 
+              {/* Student Overview Stats */}
+              <div className={styles.resultStats}>
+                <div className={styles.statCard}>
+                  <h4>Total Students</h4>
+                  <p>{students.length}</p>
+                </div>
+                <div className={styles.statCard}>
+                  <h4>Active Students</h4>
+                  <p>{students.filter(s => s.performance_summary?.exams_attempted > 0).length}</p>
+                </div>
+                <div className={styles.statCard}>
+                  <h4>Average Pass Rate</h4>
+                  <p>
+                    {(() => {
+                      const studentsWithAttempts = students.filter(s => s.performance_summary?.exams_attempted > 0);
+                      if (studentsWithAttempts.length === 0) return '0%';
+                      const passCount = studentsWithAttempts.filter(s => 
+                        s.performance_summary?.latest_result_status === 'Pass'
+                      ).length;
+                      return `${((passCount / studentsWithAttempts.length) * 100).toFixed(1)}%`;
+                    })()}
+                  </p>
+                </div>
+              </div>
+
+              {/* Student Table */}
               <table className={styles.table}>
                 <thead>
                   <tr>
+                    <th>Roll No</th>
                     <th>Name</th>
                     <th>Email</th>
-                    <th>Roll No</th>
                     <th>Batch</th>
                     <th>Exam Type</th>
                     <th>Mobile</th>
+                    <th>Exams Assigned</th>
                     <th>Exams Attempted</th>
                     <th>Average Score</th>
-                    <th>Action</th>
+                    <th>Highest Score</th>
+                    <th>Latest Result</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {students.length > 0 ? students.map((s)=>(
                     <tr key={s.student_id}>
+                      <td><strong>{s.roll_no}</strong></td>
                       <td>{s.student_name}</td>
                       <td>{s.email}</td>
-                      <td>{s.roll_no}</td>
                       <td>{s.batch_name}</td>
-                      <td>{s.exam_type}</td>
+                      <td><span className={styles.examTypeBadge}>{s.exam_type}</span></td>
                       <td>{s.mobile_no}</td>
+                      <td>{s.performance_summary?.total_exams_available || 0}</td>
                       <td>{s.performance_summary?.exams_attempted || 0}</td>
-                      <td>{s.performance_summary?.average_score ? `${parseFloat(s.performance_summary.average_score).toFixed(1)}%` : 'N/A'}</td>
                       <td>
-                        <button onClick={()=>setEditStudent(s)}>Edit</button>
+                        {s.performance_summary?.average_score ? (
+                          <span className={`${parseFloat(s.performance_summary.average_score) >= 40 ? styles.pass : styles.fail}`}>
+                            {parseFloat(s.performance_summary.average_score).toFixed(1)}%
+                          </span>
+                        ) : 'N/A'}
+                      </td>
+                      <td>
+                        {s.performance_summary?.highest_score ? (
+                          <span className={styles.pass}>
+                            {parseFloat(s.performance_summary.highest_score).toFixed(1)}%
+                          </span>
+                        ) : 'N/A'}
+                      </td>
+                      <td>
+                        {s.performance_summary?.latest_result_status ? (
+                          <span className={s.performance_summary.latest_result_status === 'Pass' ? styles.pass : styles.fail}>
+                            {s.performance_summary.latest_result_status}
+                          </span>
+                        ) : 'N/A'}
+                      </td>
+                      <td>
+                        <button className={styles.viewButton} onClick={()=>setEditStudent(s)}>View Details</button>
                         <button onClick={()=>deleteStudent(s.student_id)}>Delete</button>
                       </td>
                     </tr>
                   )) : (
-                    <tr><td colSpan="9">No students found</td></tr>
+                    <tr><td colSpan="12">No students found</td></tr>
                   )}
                 </tbody>
               </table>
 
+              {/* Student Detail Modal */}
               {editStudent && (
-                <div className={styles.card}>
-                  <h3>Edit Student</h3>
+                <div className={styles.card} style={{width: "90%", maxWidth: "900px", marginTop: "20px"}}>
+                  <div style={{display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px"}}>
+                    <h3>Student Details - {editStudent.student_name}</h3>
+                    <button onClick={()=>setEditStudent(null)} style={{background: "red", color: "white", border: "none", padding: "8px 16px", borderRadius: "4px", cursor: "pointer"}}>Close</button>
+                  </div>
 
-                  <input value={editStudent.student_name}
-                    onChange={(e)=>setEditStudent({...editStudent, student_name:e.target.value})}
-                    placeholder="Name"
-                  />
+                  {/* Student Basic Info */}
+                  <div style={{background: "white", color: "black", padding: "15px", borderRadius: "8px", marginBottom: "20px"}}>
+                    <h4 style={{marginBottom: "10px", color: "#1e5bbf"}}>Basic Information</h4>
+                    <div style={{display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px"}}>
+                      <p><strong>Roll No:</strong> {editStudent.roll_no}</p>
+                      <p><strong>Name:</strong> {editStudent.student_name}</p>
+                      <p><strong>Email:</strong> {editStudent.email}</p>
+                      <p><strong>Mobile:</strong> {editStudent.mobile_no}</p>
+                      <p><strong>Batch:</strong> {editStudent.batch_name}</p>
+                      <p><strong>Admission Year:</strong> {editStudent.admission_year}</p>
+                      <p><strong>Exam Type:</strong> {editStudent.exam_type}</p>
+                      <p><strong>City:</strong> {editStudent.city || 'N/A'}</p>
+                      <p><strong>State:</strong> {editStudent.state || 'N/A'}</p>
+                      <p><strong>College:</strong> {editStudent.college_name || 'N/A'}</p>
+                    </div>
+                  </div>
 
-                  <input value={editStudent.email}
-                    onChange={(e)=>setEditStudent({...editStudent, email:e.target.value})}
-                    placeholder="Email"
-                  />
+                  {/* Performance Summary */}
+                  <div style={{background: "white", color: "black", padding: "15px", borderRadius: "8px", marginBottom: "20px"}}>
+                    <h4 style={{marginBottom: "10px", color: "#1e5bbf"}}>Performance Summary</h4>
+                    <div style={{display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "10px"}}>
+                      <div style={{textAlign: "center", padding: "10px", background: "#f5f5f5", borderRadius: "4px"}}>
+                        <p style={{fontSize: "24px", fontWeight: "bold", color: "#1e5bbf"}}>{editStudent.performance_summary?.total_exams_available || 0}</p>
+                        <p style={{fontSize: "12px"}}>Exams Assigned</p>
+                      </div>
+                      <div style={{textAlign: "center", padding: "10px", background: "#f5f5f5", borderRadius: "4px"}}>
+                        <p style={{fontSize: "24px", fontWeight: "bold", color: "#1e5bbf"}}>{editStudent.performance_summary?.exams_attempted || 0}</p>
+                        <p style={{fontSize: "12px"}}>Exams Attempted</p>
+                      </div>
+                      <div style={{textAlign: "center", padding: "10px", background: "#f5f5f5", borderRadius: "4px"}}>
+                        <p style={{fontSize: "24px", fontWeight: "bold", color: editStudent.performance_summary?.average_score >= 40 ? "green" : "red"}}>{editStudent.performance_summary?.average_score ? `${parseFloat(editStudent.performance_summary.average_score).toFixed(1)}%` : 'N/A'}</p>
+                        <p style={{fontSize: "12px"}}>Average Score</p>
+                      </div>
+                      <div style={{textAlign: "center", padding: "10px", background: "#f5f5f5", borderRadius: "4px"}}>
+                        <p style={{fontSize: "24px", fontWeight: "bold", color: "green"}}>{editStudent.performance_summary?.highest_score ? `${parseFloat(editStudent.performance_summary.highest_score).toFixed(1)}%` : 'N/A'}</p>
+                        <p style={{fontSize: "12px"}}>Highest Score</p>
+                      </div>
+                    </div>
+                    <p style={{marginTop: "10px", textAlign: "center"}}>
+                      <strong>Latest Result Status:</strong> 
+                      <span className={editStudent.performance_summary?.latest_result_status === 'Pass' ? styles.pass : styles.fail}>
+                        {' '}{editStudent.performance_summary?.latest_result_status || 'N/A'}
+                      </span>
+                    </p>
+                  </div>
 
-                  <input value={editStudent.batch_name}
-                    onChange={(e)=>setEditStudent({...editStudent, batch_name:e.target.value})}
-                    placeholder="Batch"
-                  />
+                  {/* Exam Attempts History */}
+                  {editStudent.attempts && editStudent.attempts.length > 0 && (
+                    <div style={{background: "white", color: "black", padding: "15px", borderRadius: "8px", marginBottom: "20px"}}>
+                      <h4 style={{marginBottom: "10px", color: "#1e5bbf"}}>Exam Attempts History</h4>
+                      <table className={styles.table} style={{marginTop: "10px"}}>
+                        <thead>
+                          <tr>
+                            <th>Attempt ID</th>
+                            <th>Exam Name</th>
+                            <th>Exam Type</th>
+                            <th>Date</th>
+                            <th>Questions</th>
+                            <th>Correct</th>
+                            <th>Percentage</th>
+                            <th>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {editStudent.attempts.map((attempt) => (
+                            <tr key={attempt.attempt_id}>
+                              <td>{attempt.attempt_id}</td>
+                              <td>{attempt.exam_name}</td>
+                              <td><span className={styles.examTypeBadge}>{attempt.exam_type}</span></td>
+                              <td>{attempt.submitted_at ? new Date(attempt.submitted_at).toLocaleDateString() : 'N/A'}</td>
+                              <td>{attempt.answered_questions || 0}</td>
+                              <td>{attempt.correct_answers || 0}</td>
+                              <td>
+                                <span className={`${attempt.percentage >= 40 ? styles.pass : styles.fail}`}>
+                                  {parseFloat(attempt.percentage).toFixed(1)}%
+                                </span>
+                              </td>
+                              <td>
+                                <span className={attempt.result_status === 'Pass' ? styles.pass : styles.fail}>
+                                  {attempt.result_status}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
 
-                  <input value={editStudent.mobile_no}
-                    onChange={(e)=>setEditStudent({...editStudent, mobile_no:e.target.value})}
-                    placeholder="Mobile"
-                  />
+                  {/* Assigned Exams */}
+                  {editStudent.assigned_exams && editStudent.assigned_exams.length > 0 && (
+                    <div style={{background: "white", color: "black", padding: "15px", borderRadius: "8px"}}>
+                      <h4 style={{marginBottom: "10px", color: "#1e5bbf"}}>Assigned Exams</h4>
+                      <table className={styles.table} style={{marginTop: "10px"}}>
+                        <thead>
+                          <tr>
+                            <th>Exam Name</th>
+                            <th>Exam Type</th>
+                            <th>Date</th>
+                            <th>Time</th>
+                            <th>Duration</th>
+                            <th>Questions</th>
+                            <th>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {editStudent.assigned_exams.map((exam) => (
+                            <tr key={exam.exam_id}>
+                              <td>{exam.exam_name}</td>
+                              <td><span className={styles.examTypeBadge}>{exam.exam_type}</span></td>
+                              <td>{exam.exam_date ? new Date(exam.exam_date).toLocaleDateString() : 'N/A'}</td>
+                              <td>{exam.exam_time || 'N/A'}</td>
+                              <td>{exam.duration_minutes} min</td>
+                              <td>{exam.total_questions}</td>
+                              <td><span className={styles.upcoming}>{exam.exam_status || 'Available'}</span></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
 
-                  <button onClick={updateStudent}>Update</button>
-                  <button onClick={()=>setEditStudent(null)}>Cancel</button>
+                  {(!editStudent.attempts || editStudent.attempts.length === 0) && (
+                    <div style={{background: "white", color: "black", padding: "15px", borderRadius: "8px", textAlign: "center"}}>
+                      <p>No exam attempts yet. Student hasn't taken any exams.</p>
+                    </div>
+                  )}
                 </div>
               )}
             </>
