@@ -7,9 +7,8 @@ router.get('/available/:studentId', async (req, res) => {
     const studentId = req.params.studentId;
     
     try {
-        // Get student's exam type
         const [studentResult] = await db.execute(
-            'SELECT exam_type FROM students WHERE student_id = ?',
+            'SELECT student_id, student_name, exam_type, batch_name, admission_year FROM students WHERE student_id = ?',
             [studentId]
         );
         
@@ -17,16 +16,21 @@ router.get('/available/:studentId', async (req, res) => {
             return res.status(404).json({ error: 'Student not found' });
         }
         
-        const studentExamType = studentResult[0].exam_type;
-        
-        // Get exams matching student's exam type
+        const student = studentResult[0];
+
         const [exams] = await db.execute(
-            'SELECT * FROM exams WHERE exam_type = ? ORDER BY exam_date DESC',
-            [studentExamType]
+            `SELECT e.*
+             FROM exams e
+             INNER JOIN exam_students es ON e.exam_id = es.exam_id
+             WHERE es.student_id = ?
+             ORDER BY e.exam_date DESC, e.exam_time DESC`,
+            [studentId]
         );
         
         res.json({
-            student_exam_type: studentExamType,
+            student_exam_type: student.exam_type,
+            batch_name: student.batch_name,
+            admission_year: student.admission_year,
             available_exams: exams
         });
         
@@ -43,9 +47,18 @@ router.get('/:examId/questions/:studentId', async (req, res) => {
     try {
         // Verify student eligibility for this exam
         const eligibilityQuery = `
-            SELECT s.exam_type as student_exam_type, e.exam_type as exam_type
-            FROM students s
-            JOIN exams e ON s.exam_type = e.exam_type
+            SELECT 
+                s.student_id,
+                s.student_name,
+                s.exam_type as student_exam_type,
+                s.batch_name,
+                s.admission_year,
+                e.exam_id,
+                e.exam_name,
+                e.exam_type
+            FROM exam_students es
+            INNER JOIN students s ON es.student_id = s.student_id
+            INNER JOIN exams e ON es.exam_id = e.exam_id
             WHERE s.student_id = ? AND e.exam_id = ?
         `;
         
@@ -77,6 +90,7 @@ router.get('/:examId/questions/:studentId', async (req, res) => {
                 q.negative_marks,
                 q.difficulty_level,
                 q.explanation_text,
+                MIN(eq.default_sequence) as default_sequence,
                 GROUP_CONCAT(
                     CONCAT(qo.option_label, ') ', qo.option_text) 
                     ORDER BY qo.option_label
@@ -90,7 +104,7 @@ router.get('/:examId/questions/:studentId', async (req, res) => {
             INNER JOIN question_options qo ON q.question_id = qo.question_id
             WHERE eq.exam_id = ?
             GROUP BY q.question_id
-            ORDER BY q.question_id
+            ORDER BY default_sequence, q.question_id
         `, [examId]);
         
         // Format questions with proper options array
@@ -109,7 +123,7 @@ router.get('/:examId/questions/:studentId', async (req, res) => {
         // Get sections if available (from parsed data)
         const [sections] = await db.execute(`
             SELECT DISTINCT 
-                COALESCE(section_name, 'General') as section_name
+                COALESCE(q.section_name, 'General') as section_name
             FROM questions q
             INNER JOIN exam_questions eq ON q.question_id = eq.question_id
             WHERE eq.exam_id = ?
@@ -149,12 +163,15 @@ router.get('/:examId/check-access/:studentId', async (req, res) => {
                 s.student_id,
                 s.student_name,
                 s.exam_type as student_exam_type,
+                s.batch_name,
+                s.admission_year,
                 e.exam_id,
                 e.exam_name,
                 e.exam_type,
-                CASE WHEN s.exam_type = e.exam_type THEN 'ELIGIBLE' ELSE 'NOT_ELIGIBLE' END as access_status
+                CASE WHEN es.exam_student_id IS NOT NULL THEN 'ELIGIBLE' ELSE 'NOT_ELIGIBLE' END as access_status
             FROM students s
             CROSS JOIN exams e
+            LEFT JOIN exam_students es ON es.student_id = s.student_id AND es.exam_id = e.exam_id
             WHERE s.student_id = ? AND e.exam_id = ?
         `, [studentId, examId]);
         

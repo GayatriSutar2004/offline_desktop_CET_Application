@@ -175,7 +175,7 @@ export default function StudentExam() {
             if (data.access_status === 'ELIGIBLE') {
                 loadExamQuestions(examId, studentId);
             } else {
-                setError(`You are not eligible for this exam. This exam is for ${data.exam_type} students only.`);
+                setError('You are not eligible for this exam. This exam has not been assigned to your account.');
                 setLoading(false);
             }
         } catch (err) {
@@ -280,22 +280,34 @@ export default function StudentExam() {
         }
 
         try {
+            console.log('Submitting exam with answers:', answersRef.current);
             const totalDuration = currentExamData.exam.duration_minutes * 60;
+            const timeTaken = totalDuration - (timeRemainingRef.current || 0);
+
             const response = await fetch('http://localhost:3001/api/exam-attempts', {
                 method: 'POST',
                 headers: {
+                    'Accept': 'application/json',
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
                     student_id: currentStudentData.student_id,
                     exam_id: currentExamData.exam.exam_id,
                     answers: answersRef.current,
-                    time_taken: totalDuration - (timeRemainingRef.current || 0)
+                    time_taken: Math.max(0, timeTaken)
                 })
             });
 
+            const contentType = response.headers.get("content-type");
+            if (!contentType || !contentType.includes("application/json")) {
+                const text = await response.text();
+                console.error('Non-JSON response received:', text);
+                throw new Error('Server returned an invalid response format.');
+            }
+
             const result = await response.json();
             if (response.ok) {
+                console.log('Exam submitted successfully:', result);
                 await exitFullscreen();
                 router.push(`/exam-result?attemptId=${result.attempt_id}`);
                 return;
@@ -304,7 +316,7 @@ export default function StudentExam() {
             setError(result.error || 'Error submitting exam');
         } catch (err) {
             console.error('Error submitting exam:', err);
-            setError('Error submitting exam');
+            setError(`Error submitting exam: ${err.message}`);
         } finally {
             submitInProgressRef.current = false;
             setSubmitting(false);

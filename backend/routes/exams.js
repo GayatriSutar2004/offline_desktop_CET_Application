@@ -8,10 +8,25 @@ const EnhancedQuestionParser = require('../enhanced-question-parser');
 
 const upload = multer({ dest: 'uploads/' });
 
-// Get all exams
+function cleanupUploadedFile(filePath) {
+  try {
+    if (filePath && fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  } catch (cleanupError) {
+    console.warn('Could not delete uploaded file:', filePath, cleanupError.message);
+  }
+}
+
+// Get all exams with student counts
 router.get('/', async (req, res) => {
   try {
-    const [results] = await db.execute("SELECT * FROM exams");
+    const [results] = await db.query(`
+      SELECT e.*, 
+      (SELECT COUNT(*) FROM exam_students es WHERE es.exam_id = e.exam_id) as assigned_students
+      FROM exams e
+      ORDER BY e.created_at DESC
+    `);
     res.json(results);
   } catch(err) {
     console.log("DB ERROR:", err);
@@ -25,7 +40,17 @@ router.post('/add', upload.single('file'), async (req, res) => {
   console.log("Request body:", req.body);
   console.log("Uploaded file:", req.file);
   
-  const { exam_name, duration_minutes, total_questions, exam_type, exam_date, exam_time } = req.body;
+  const {
+    exam_name,
+    duration_minutes,
+    total_questions,
+    exam_type,
+    exam_date,
+    exam_time,
+    created_by,
+    target_batch_name,
+    target_admission_year
+  } = req.body;
   const file = req.file;
 
   console.log("Extracted values:", {
@@ -58,52 +83,131 @@ router.post('/add', upload.single('file'), async (req, res) => {
     const examTypeId = examTypeMapping[exam_type] || 5; // Default to 'Other' if not found
     
     // First, insert the exam
-    const [result] = await db.execute(
-      `INSERT INTO exams (exam_name, duration_minutes, total_questions, exam_type_id, exam_type, exam_date, exam_time, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, 
-      [exam_name, duration_minutes, total_questions, examTypeId, exam_type || 'NDA', exam_date || new Date().toISOString().split('T')[0], exam_time || '09:00:00', 1]
+    const creatorId = Number(created_by) || 1;
+
+    const [result] = await db.query(
+      `INSERT INTO exams (exam_name, duration_minutes, total_questions, exam_type_id, exam_type, target_batch_name, target_admission_year, exam_date, exam_time, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, 
+      [
+        exam_name, 
+        duration_minutes, 
+        total_questions, 
+        examTypeId, 
+        exam_type || 'NDA', 
+        target_batch_name || null,
+        target_admission_year ? Number(target_admission_year) : null,
+        exam_date || new Date().toISOString().split('T')[0], 
+        exam_time || '09:00:00', 
+        creatorId
+      ]
     );
     const examId = result.insertId;
 
     // Now parse the file based on extension
     const fileExtension = file.originalname.split('.').pop().toLowerCase();
     
+    let parsedData;
+
     if (fileExtension === 'docx' || fileExtension === 'doc') {
       // Parse Word document with enhanced parser
       const parser = new EnhancedQuestionParser();
-      const parsedData = await parser.parseWordDocument(file.path);
-      await insertParsedQuestions(parsedData, examId, file.path, res);
+      parsedData = await parser.parseWordDocument(file.path);
     } else if (fileExtension === 'txt') {
       // Parse text file with enhanced parser
       const parser = new EnhancedQuestionParser();
       const text = fs.readFileSync(file.path, 'utf8');
       parser.parseDocumentContent(text);
-      const parsedData = {
+      parsedData = {
         sections: parser.sections,
         questions: parser.questions
       };
-      await insertParsedQuestions(parsedData, examId, file.path, res);
     } else {
       return res.status(400).json({ error: "Unsupported file type. Please upload .docx, .doc, or .txt files." });
     }
+
+    if (!parsedData.questions.length && (fileExtension === 'docx' || fileExtension === 'doc')) {
+      console.log('Primary parse returned 0 questions. Running fallback parser on raw text.');
+      const fallbackText = (await mammoth.extractRawText({ path: file.path })).value;
+      const fallbackParser = new EnhancedQuestionParser();
+      const fallbackQuestions = fallbackParser.parseAlternativeFormat(fallbackText)
+        .map((question, index) => ({
+          ...question,
+          question_number: question.question_number || index + 1,
+          section: 'General'
+        }))
+        .filter(question => question.options?.length > 0);
+
+      parsedData = {
+        sections: fallbackQuestions.length ? [{ name: 'General', questions: fallbackQuestions }] : [],
+        questions: fallbackQuestions
+      };
+    }
+
+    if (!parsedData.questions.length) {
+      const previewText = fileExtension === 'txt'
+        ? fs.readFileSync(file.path, 'utf8')
+        : (await mammoth.extractRawText({ path: file.path })).value;
+
+      cleanupUploadedFile(file.path);
+      return res.status(400).json({
+        error: 'No questions could be extracted from the uploaded file.',
+        preview: previewText.substring(0, 400)
+      });
+    }
+
+    await insertParsedQuestions(parsedData, examId, file.path, res, {
+      examType: exam_type || 'NDA',
+      targetBatchName: target_batch_name || null,
+      targetAdmissionYear: target_admission_year || null
+    });
   } catch (err) {
     console.log("DB ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-async function insertParsedQuestions(parsedData, examId, filePath, res) {
+async function assignExamToEligibleStudents(examId, { examType, targetBatchName, targetAdmissionYear }) {
+  const filters = ['exam_type = ?'];
+  const params = [examType];
+
+  if (targetBatchName) {
+    filters.push('batch_name = ?');
+    params.push(targetBatchName);
+  }
+
+  if (targetAdmissionYear) {
+    filters.push('admission_year = ?');
+    params.push(Number(targetAdmissionYear));
+  }
+
+  const [students] = await db.query(
+    `SELECT student_id FROM students WHERE ${filters.join(' AND ')} AND account_status = 'Active'`,
+    params
+  );
+
+  for (const student of students) {
+    await db.query(
+      'INSERT INTO exam_students (exam_id, student_id) VALUES (?, ?)',
+      [examId, student.student_id]
+    );
+  }
+
+  return students.length;
+}
+
+async function insertParsedQuestions(parsedData, examId, filePath, res, assignmentConfig) {
   try {
     console.log('=== INSERTING PARSED QUESTIONS ===');
     console.log('Sections:', parsedData.sections.length);
     console.log('Questions:', parsedData.questions.length);
     
     let insertedQuestions = 0;
+    const insertedQuestionIds = [];
     
     for (const question of parsedData.questions) {
       try {
         // Insert the question
-        const [questionResult] = await db.execute(
-          `INSERT INTO questions (exam_type_id, subject_id, question_text, marks, negative_marks, difficulty_level, explanation_text, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        const [questionResult] = await db.query(
+          `INSERT INTO questions (exam_type_id, subject_id, question_text, marks, negative_marks, difficulty_level, explanation_text, created_by, section_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             1, // exam_type_id (will be updated later)
             1, // subject_id
@@ -112,17 +216,19 @@ async function insertParsedQuestions(parsedData, examId, filePath, res) {
             0.00, // negative_marks
             'Medium', // difficulty_level
             question.explanation || null,
-            1 // created_by
+            1, // created_by
+            question.section || 'General'
           ]
         );
         
         const questionId = questionResult.insertId;
+        insertedQuestionIds.push(questionId);
         console.log('Inserted question ID:', questionId);
         
         // Insert options if they exist
         if (question.options && question.options.length > 0) {
           for (const option of question.options) {
-            await db.execute(
+            await db.query(
               `INSERT INTO question_options (question_id, option_label, option_text, is_correct) VALUES (?, ?, ?, ?)`,
               [
                 questionId,
@@ -138,41 +244,44 @@ async function insertParsedQuestions(parsedData, examId, filePath, res) {
         insertedQuestions++;
       } catch (questionError) {
         console.error('Error inserting individual question:', questionError);
-        // Continue with other questions
+        throw questionError;
       }
     }
     
     // Link questions to exam using exam_questions table
-    if (parsedData.questions.length > 0) {
+    if (insertedQuestionIds.length > 0) {
       try {
-        // Get the question IDs that were just inserted
-        const [latestQuestions] = await db.execute(
-          'SELECT question_id FROM questions ORDER BY question_id DESC LIMIT ?',
-          [parsedData.questions.length]
-        );
-        
-        // Link each question to the exam
-        for (const question of latestQuestions) {
-          await db.execute(
-            'INSERT INTO exam_questions (exam_id, question_id) VALUES (?, ?)',
-            [examId, question.question_id]
+        // Link each inserted question directly to this exam
+        for (let index = 0; index < insertedQuestionIds.length; index++) {
+          const questionId = insertedQuestionIds[index];
+          await db.query(
+            'INSERT INTO exam_questions (exam_id, question_id, default_sequence) VALUES (?, ?, ?)',
+            [examId, questionId, index + 1]
           );
         }
         
-        console.log('Linked', latestQuestions.length, 'questions to exam', examId);
+        console.log('Linked', insertedQuestionIds.length, 'questions to exam', examId);
       } catch (linkError) {
         console.error('Error linking questions to exam:', linkError);
+        throw linkError;
       }
     }
+
+    if (insertedQuestions === 0) {
+      throw new Error('Questions were parsed but none were inserted into the database.');
+    }
+
+    const assignedStudents = await assignExamToEligibleStudents(examId, assignmentConfig);
     
     // Delete the uploaded file
-    fs.unlinkSync(filePath);
+    cleanupUploadedFile(filePath);
     
     res.json({ 
       message: `Exam created successfully with ${insertedQuestions} questions!`, 
       exam_id: examId,
       questions_inserted: insertedQuestions,
-      sections_found: parsedData.sections.length
+      sections_found: parsedData.sections.length,
+      students_assigned: assignedStudents
     });
     
   } catch (err) {
@@ -185,7 +294,7 @@ async function insertParsedQuestions(parsedData, examId, filePath, res) {
 router.get('/:examId', async (req, res) => {
   const examId = req.params.examId;
   try {
-    const [results] = await db.execute("SELECT * FROM exams WHERE exam_id = ?", [examId]);
+    const [results] = await db.query("SELECT * FROM exams WHERE exam_id = ?", [examId]);
     if (results.length === 0) {
       return res.status(404).json({ error: "Exam not found" });
     }
@@ -202,7 +311,7 @@ router.get('/:examId/questions', async (req, res) => {
   console.log("Fetching questions for exam_id:", examId);
   try {
     // Get questions linked to this specific exam
-    const [examQuestions] = await db.execute(`
+    const [examQuestions] = await db.query(`
       SELECT q.* FROM questions q
       INNER JOIN exam_questions eq ON q.question_id = eq.question_id
       WHERE eq.exam_id = ?
@@ -216,7 +325,7 @@ router.get('/:examId/questions', async (req, res) => {
     
     for (const question of examQuestions) {
       // Get options for this question
-      const [options] = await db.execute(`
+      const [options] = await db.query(`
         SELECT option_label, option_text, is_correct 
         FROM question_options 
         WHERE question_id = ?

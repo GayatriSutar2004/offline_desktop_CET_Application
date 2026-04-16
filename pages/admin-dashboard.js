@@ -27,6 +27,38 @@ export default function AdminDashboard() {
   const [minute, setMinute] = useState("");
   const [date, setDate] = useState("");
 
+  // Student form state
+  const [sName, setSName] = useState("");
+  const [sBatch, setSBatch] = useState("");
+  const [sYear, setSYear] = useState("");
+  const [sRoll, setSRoll] = useState("");
+  const [sMobile, setSMobile] = useState("");
+  const [sEmail, setSEmail] = useState("");
+  const [sPassword, setSPassword] = useState("");
+  const [sConfirmPassword, setSConfirmPassword] = useState("");
+  const [sExamType, setSExamType] = useState("NDA");
+
+  // Exam creation state
+  const [cExamName, setCExamName] = useState("");
+  const [cHour, setCHour] = useState("");
+  const [cMinute, setCMinute] = useState("");
+  const [cQuestions, setCQuestions] = useState("");
+  const [cExamType, setCExamType] = useState("");
+  const [cExamDate, setCExamDate] = useState("");
+  const [cExamTime, setCExamTime] = useState("09:00");
+  const [cTimePeriod, setTimePeriod] = useState("AM");
+  const [cTargetBatch, setCTargetBatch] = useState("");
+  const [cTargetYear, setCTargetYear] = useState("");
+  const [cFile, setCFile] = useState(null);
+
+  // Result hierarchy state
+  const [resultViewLevel, setResultViewLevel] = useState("batch"); // batch, year, exam, student_list, student_detail
+  const [selectedBatch, setSelectedBatch] = useState(null);
+  const [selectedYear, setSelectedYear] = useState(null);
+  const [selectedExamId, setSelectedExamId] = useState(null);
+  const [selectedExamName, setSelectedExamName] = useState(null);
+  const [selectedStudentResult, setSelectedStudentResult] = useState(null);
+
   // Fetch admin data
   useEffect(() => {
     const fetchAdminData = async () => {
@@ -139,13 +171,20 @@ export default function AdminDashboard() {
   };
 
   // Fetch next roll number
+  // Auto-generate email based on name and roll number
+  useEffect(() => {
+    if (sName && sRoll) {
+      const cleanName = sName.replace(/\s+/g, '').toLowerCase();
+      setSEmail(`${cleanName}${sRoll}@vijeta.com`);
+    }
+  }, [sName, sRoll]);
+
   const fetchNextRollNo = async () => {
     try {
       const res = await fetch("http://localhost:3001/api/students/next-roll-no");
       const data = await res.json();
       if (data.next_roll_no) {
         setSRoll(data.next_roll_no);
-        setSEmail(data.next_roll_no);
       }
     } catch (err) {
       console.log("Error fetching next roll number:", err);
@@ -156,7 +195,12 @@ export default function AdminDashboard() {
     try {
       const res = await fetch("http://localhost:3001/api/students/with-results");
       const data = await res.json();
-      setStudents(data);
+      if (Array.isArray(data)) {
+        setStudents(data);
+      } else {
+        console.error("Fetched students is not an array:", data);
+        setStudents([]);
+      }
     } catch (err) {
       console.log(err);
       alert("Error fetching students");
@@ -185,7 +229,12 @@ export default function AdminDashboard() {
     try {
       const res = await fetch("http://localhost:3001/api/admin-results");
       const data = await res.json();
-      setResults(data);
+      if (Array.isArray(data)) {
+        setResults(data);
+      } else {
+        console.error("Fetched results is not an array:", data);
+        setResults([]);
+      }
     } catch (err) {
       console.log(err);
       alert("Error fetching results");
@@ -200,7 +249,12 @@ export default function AdminDashboard() {
       
       const res = await fetch(url);
       const data = await res.json();
-      setResults(data);
+      if (Array.isArray(data)) {
+        setResults(data);
+      } else {
+        console.error("Fetched results by type is not an array:", data);
+        setResults([]);
+      }
     } catch (err) {
       console.log(err);
       alert("Error fetching results");
@@ -212,9 +266,8 @@ export default function AdminDashboard() {
       const res = await fetch(`http://localhost:3001/api/admin-results/${attemptId}`);
       const data = await res.json();
       
-      // Create a modal or detailed view
-      alert(`Attempt ID: ${attemptId}\nStudent: ${data.result?.student_name}\nExam: ${data.result?.exam_name}\nPercentage: ${data.result?.percentage}%\n\nDetailed responses available in console.`);
-      console.log('Result details:', data);
+      setSelectedStudentResult(data);
+      setResultViewLevel("student_detail");
     } catch (err) {
       console.error('Error fetching result details:', err);
       alert('Error fetching result details');
@@ -249,6 +302,25 @@ export default function AdminDashboard() {
     fetchExams();
     fetchResults();
   }, []);
+
+  const resetPassword = async (id) => {
+    const newPassword = window.prompt("Enter new password:");
+    if (!newPassword) return;
+
+    try {
+      const res = await fetch(`http://localhost:3001/api/students/reset-password/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ new_password: newPassword })
+      });
+
+      const data = await res.json();
+      alert(data.message || data.error);
+    } catch (err) {
+      console.log(err);
+      alert("Error resetting password");
+    }
+  };
 
   const deleteStudent = async (id) => {
     if (!window.confirm("Delete this student?")) return;
@@ -293,16 +365,6 @@ export default function AdminDashboard() {
   };
 
   // ================= ADD STUDENT =================
-  const [sName, setSName] = useState("");
-  const [sBatch, setSBatch] = useState("");
-  const [sYear, setSYear] = useState("");
-  const [sRoll, setSRoll] = useState("");
-  const [sMobile, setSMobile] = useState("");
-  const [sEmail, setSEmail] = useState("");
-  const [sPassword, setSPassword] = useState("");
-  const [sConfirmPassword, setSConfirmPassword] = useState("");
-  const [sExamType, setSExamType] = useState("NDA");
-
   const addStudent = async () => {
     if(!sName || !sBatch || !sYear || !sRoll || !sMobile || !sEmail || !sPassword){
       alert("Please fill all required fields");
@@ -350,18 +412,6 @@ export default function AdminDashboard() {
   };
 
   // ================= EXAM =================
-  const [cExamName, setCExamName] = useState("");
-  const [cHour, setCHour] = useState("");
-  const [cMinute, setCMinute] = useState("");
-  const [cQuestions, setCQuestions] = useState("");
-  const [cExamType, setCExamType] = useState("");
-  const [cExamDate, setCExamDate] = useState("");
-  const [cExamTime, setCExamTime] = useState("09:00");
-  const [cTimePeriod, setTimePeriod] = useState("AM");
-  const [cTargetBatch, setCTargetBatch] = useState("");
-  const [cTargetYear, setCTargetYear] = useState("");
-  const [cFile, setCFile] = useState(null);
-
   const createExam = async () => {
     console.log("=== EXAM CREATION STARTED ===");
     console.log("Exam creation values:", {
@@ -515,7 +565,12 @@ export default function AdminDashboard() {
         <div className={styles.sidebar}>
           <p className={activeMenu==="create"?styles.active:""} onClick={()=>{setActiveMenu("create");setEditMode(false);}}>Create</p>
           <p className={activeMenu==="students"?styles.active:""} onClick={()=>setActiveMenu("students")}>Students</p>
-          <p className={activeMenu==="result"?styles.active:""} onClick={()=>{setActiveMenu("result");setEditMode(false);}}>Result</p>
+          <p className={activeMenu==="result"?styles.active:""} onClick={()=>{
+            setActiveMenu("result");
+            setEditMode(false);
+            setResultViewLevel("batch");
+            fetchResults();
+          }}>Result</p>
           <p className={activeMenu==="settings"?styles.active:""} onClick={()=>{setActiveMenu("settings");setEditMode(false);}}>Settings</p>
           <p className={activeMenu==="profile"?styles.active:""} onClick={()=>{setActiveMenu("profile");setEditMode(false);}}>Profile</p>
         </div>
@@ -718,6 +773,7 @@ export default function AdminDashboard() {
                       </td>
                       <td>
                         <button className={styles.viewButton} onClick={()=>setEditStudent(s)}>View Details</button>
+                        <button onClick={()=>resetPassword(s.student_id)} style={{background: "#f0ad4e", color: "white", border: "none", padding: "4px 8px", borderRadius: "4px", cursor: "pointer", marginLeft: "5px"}}>Reset Pwd</button>
                         <button onClick={()=>deleteStudent(s.student_id)}>Delete</button>
                       </td>
                     </tr>
@@ -869,87 +925,272 @@ export default function AdminDashboard() {
 
   {/* RESULT */}
           {activeMenu === "result" && (
-            <>
-              <h2 style={{ textAlign: "center" }}>Result Management</h2>
+            <div className={styles.resultContainer}>
+              <h2 style={{ textAlign: "center", marginBottom: "20px" }}>Result Management</h2>
 
-              <div className={styles.tabs}>
-                <button onClick={() => fetchResultsByExamType('all')}>All</button>
-                <button onClick={() => fetchResultsByExamType('NDA')}>NDA</button>
-                <button onClick={() => fetchResultsByExamType('NEET')}>NEET</button>
-                <button onClick={() => fetchResultsByExamType('JEE')}>JEE</button>
-                <button onClick={() => fetchResultsByExamType('SSB')}>SSB</button>
-                <button onClick={() => fetchResultsByExamType('SSC')}>SSC</button>
-                <button onClick={() => fetchResultsByExamType('Police')}>Police</button>
-                <button onClick={() => fetchResultsByExamType('Other')}>Other</button>
+              {/* Breadcrumbs for navigation */}
+              <div className={styles.breadcrumbs} style={{ marginBottom: "20px", display: "flex", gap: "10px", alignItems: "center" }}>
+                <span 
+                  onClick={() => {
+                    setResultViewLevel("batch");
+                    setSelectedBatch(null);
+                    setSelectedYear(null);
+                    setSelectedExamId(null);
+                    setSelectedExamName(null);
+                    setSelectedStudentResult(null);
+                  }} 
+                  style={{ cursor: "pointer", color: resultViewLevel === "batch" ? "black" : "#1e5bbf", fontWeight: "bold" }}
+                >
+                  All Batches
+                </span>
+                
+                {selectedBatch && (
+                  <>
+                    <span>/</span>
+                    <span 
+                      onClick={() => setResultViewLevel("year")} 
+                      style={{ cursor: "pointer", color: resultViewLevel === "year" ? "black" : "#1e5bbf", fontWeight: "bold" }}
+                    >
+                      {selectedBatch}
+                    </span>
+                  </>
+                )}
+
+                {selectedYear && (
+                  <>
+                    <span>/</span>
+                    <span 
+                      onClick={() => setResultViewLevel("exam")} 
+                      style={{ cursor: "pointer", color: resultViewLevel === "exam" ? "black" : "#1e5bbf", fontWeight: "bold" }}
+                    >
+                      {selectedYear}
+                    </span>
+                  </>
+                )}
+
+                {selectedExamName && (
+                  <>
+                    <span>/</span>
+                    <span 
+                      onClick={() => setResultViewLevel("student_list")} 
+                      style={{ cursor: "pointer", color: resultViewLevel === "student_list" ? "black" : "#1e5bbf", fontWeight: "bold" }}
+                    >
+                      {selectedExamName}
+                    </span>
+                  </>
+                )}
+
+                {selectedStudentResult && (
+                  <>
+                    <span>/</span>
+                    <span style={{ fontWeight: "bold" }}>
+                      {selectedStudentResult.result?.student_name}
+                    </span>
+                  </>
+                )}
               </div>
 
-              <div className={styles.resultStats}>
-                <div className={styles.statCard}>
-                  <h4>Total Results</h4>
-                  <p>{results.length}</p>
+              {/* BATCH VIEW */}
+              {resultViewLevel === "batch" && (
+                <div className={styles.grid}>
+                  {[...new Set(results.map(r => r.target_batch_name || 'All Batches'))].map(batch => (
+                    <div 
+                      key={batch} 
+                      className={styles.card} 
+                      style={{ cursor: "pointer", textAlign: "center", padding: "30px" }}
+                      onClick={() => {
+                        setSelectedBatch(batch);
+                        setResultViewLevel("year");
+                      }}
+                    >
+                      <h3 style={{ margin: 0 }}>{batch}</h3>
+                      <p style={{ margin: "10px 0 0", color: "#666" }}>
+                        {results.filter(r => (r.target_batch_name || 'All Batches') === batch).length} Results
+                      </p>
+                    </div>
+                  ))}
+                  {results.length === 0 && <p style={{ textAlign: "center", width: "100%" }}>No results available.</p>}
                 </div>
-                <div className={styles.statCard}>
-                  <h4>Passed</h4>
-                  <p>{results.filter(r => r.result_status === 'Pass').length}</p>
-                </div>
-                <div className={styles.statCard}>
-                  <h4>Failed</h4>
-                  <p>{results.filter(r => r.result_status === 'Fail').length}</p>
-                </div>
-              </div>
+              )}
 
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th>Attempt ID</th>
-                    <th>Roll No</th>
-                    <th>Name</th>
-                    <th>Batch</th>
-                    <th>Exam Type</th>
-                    <th>Exam Name</th>
-                    <th>Total Questions</th>
-                    <th>Correct</th>
-                    <th>Percentage</th>
-                    <th>Status</th>
-                    <th>Date</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {results.length > 0 ? results.map((result) => (
-                    <tr key={result.attempt_id}>
-                      <td>{result.attempt_id}</td>
-                      <td>{result.roll_no || 'N/A'}</td>
-                      <td>{result.student_name || 'N/A'}</td>
-                      <td>{result.batch_name || 'N/A'}</td>
-                      <td><span className={styles.examTypeBadge}>{result.exam_type}</span></td>
-                      <td>{result.exam_name || 'N/A'}</td>
-                      <td>{result.total_questions || 0}</td>
-                      <td>{result.correct_answers || 0}</td>
-                      <td><span className={`${result.percentage >= 40 ? styles.pass : styles.fail}`}>{result.percentage || 0}%</span></td>
-                      <td><span className={result.result_status === 'Pass' ? styles.pass : styles.fail}>{result.result_status}</span></td>
-                      <td>{new Date(result.start_time).toLocaleDateString()}</td>
-                      <td>
-                        <button 
-                          className={styles.viewButton}
-                          onClick={() => viewResultDetails(result.attempt_id)}
-                        >
-                          View
-                        </button>
-                        <button 
-                          className={styles.deleteButton}
-                          onClick={() => deleteResult(result.attempt_id)}
-                        >
-                          Delete
-                        </button>
-                      </td>
-                    </tr>
-                  )) : (
-                    <tr><td colSpan="11">No Results Available</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </>
+              {/* YEAR VIEW */}
+              {resultViewLevel === "year" && (
+                <div className={styles.grid}>
+                  {[...new Set(results
+                    .filter(r => (r.target_batch_name || 'All Batches') === selectedBatch)
+                    .map(r => r.target_admission_year || 'N/A'))].map(year => (
+                    <div 
+                      key={year} 
+                      className={styles.card} 
+                      style={{ cursor: "pointer", textAlign: "center", padding: "30px" }}
+                      onClick={() => {
+                        setSelectedYear(year);
+                        setResultViewLevel("exam");
+                      }}
+                    >
+                      <h3 style={{ margin: 0 }}>Target Year: {year}</h3>
+                      <p style={{ margin: "10px 0 0", color: "#666" }}>
+                        {results.filter(r => (r.target_batch_name || 'All Batches') === selectedBatch && (r.target_admission_year || 'N/A') === year).length} Results
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* EXAM VIEW */}
+              {resultViewLevel === "exam" && (
+                <div className={styles.grid}>
+                  {[...new Set(results
+                    .filter(r => (r.target_batch_name || 'All Batches') === selectedBatch && (r.target_admission_year || 'N/A') === selectedYear)
+                    .map(r => JSON.stringify({ id: r.exam_id, name: r.exam_name })))].map(examStr => {
+                    const exam = JSON.parse(examStr);
+                    return (
+                      <div 
+                        key={exam.id} 
+                        className={styles.card} 
+                        style={{ cursor: "pointer", textAlign: "center", padding: "30px" }}
+                        onClick={() => {
+                          setSelectedExamId(exam.id);
+                          setSelectedExamName(exam.name);
+                          setResultViewLevel("student_list");
+                        }}
+                      >
+                        <h3 style={{ margin: 0 }}>{exam.name}</h3>
+                        <p style={{ margin: "10px 0 0", color: "#666" }}>
+                          {results.filter(r => r.exam_id === exam.id && (r.target_batch_name || 'All Batches') === selectedBatch).length} Students Appeared
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* STUDENT LIST VIEW */}
+              {resultViewLevel === "student_list" && (
+                <>
+                  <div className={styles.resultStats} style={{ marginBottom: "20px" }}>
+                    <div className={styles.statCard}>
+                      <h4>Total Appeared</h4>
+                      <p>{results.filter(r => r.exam_id === selectedExamId && (r.target_batch_name || 'All Batches') === selectedBatch).length}</p>
+                    </div>
+                    <div className={styles.statCard}>
+                      <h4>Passed</h4>
+                      <p>{results.filter(r => r.exam_id === selectedExamId && (r.target_batch_name || 'All Batches') === selectedBatch && r.result_status === 'Pass').length}</p>
+                    </div>
+                    <div className={styles.statCard}>
+                      <h4>Failed</h4>
+                      <p>{results.filter(r => r.exam_id === selectedExamId && (r.target_batch_name || 'All Batches') === selectedBatch && r.result_status === 'Fail').length}</p>
+                    </div>
+                    <div className={styles.statCard}>
+                      <h4>Average Score</h4>
+                      <p>
+                        {(() => {
+                          const examResults = results.filter(r => r.exam_id === selectedExamId && (r.target_batch_name || 'All Batches') === selectedBatch);
+                          if (examResults.length === 0) return '0%';
+                          const avg = examResults.reduce((sum, r) => sum + r.percentage, 0) / examResults.length;
+                          return `${avg.toFixed(1)}%`;
+                        })()}
+                      </p>
+                    </div>
+                  </div>
+
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Roll No</th>
+                        <th>Student Name</th>
+                        <th>Email</th>
+                        <th>Student Batch</th>
+                        <th>Percentage</th>
+                        <th>Status</th>
+                        <th>Attempted Date</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {results
+                        .filter(r => r.exam_id === selectedExamId && (r.target_batch_name || 'All Batches') === selectedBatch)
+                        .map((result) => (
+                          <tr key={result.attempt_id}>
+                            <td><strong>{result.roll_no}</strong></td>
+                            <td>{result.student_name}</td>
+                            <td>{result.email}</td>
+                            <td>{result.batch_name}</td>
+                            <td><span className={result.percentage >= 40 ? styles.pass : styles.fail}>{result.percentage}%</span></td>
+                            <td><span className={result.result_status === 'Pass' ? styles.pass : styles.fail}>{result.result_status}</span></td>
+                            <td>{new Date(result.submitted_at || result.start_time).toLocaleDateString()}</td>
+                            <td>
+                              <button className={styles.viewButton} onClick={() => viewResultDetails(result.attempt_id)}>View Full Report</button>
+                              <button className={styles.deleteButton} onClick={() => deleteResult(result.attempt_id)}>Delete</button>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </>
+              )}
+
+              {/* STUDENT DETAIL VIEW */}
+              {resultViewLevel === "student_detail" && selectedStudentResult && (
+                <div className={styles.card} style={{ width: "100%", maxWidth: "1000px", margin: "0 auto" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", borderBottom: "2px solid #eee", paddingBottom: "10px" }}>
+                    <h3>Detailed Report: {selectedStudentResult.result?.student_name}</h3>
+                    <button onClick={() => setResultViewLevel("student_list")} style={{ background: "#666", color: "white", border: "none", padding: "8px 16px", borderRadius: "4px", cursor: "pointer" }}>Back to List</button>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "30px" }}>
+                    <div style={{ background: "#f9f9f9", padding: "20px", borderRadius: "8px" }}>
+                      <h4 style={{ color: "#1e5bbf", marginBottom: "15px" }}>Student Information</h4>
+                      <p><strong>Name:</strong> {selectedStudentResult.result?.student_name}</p>
+                      <p><strong>Roll No:</strong> {selectedStudentResult.result?.roll_no}</p>
+                      <p><strong>Email:</strong> {selectedStudentResult.result?.email}</p>
+                      <p><strong>Batch:</strong> {selectedStudentResult.result?.batch_name}</p>
+                      <p><strong>Mobile:</strong> {selectedStudentResult.result?.mobile_no}</p>
+                    </div>
+                    <div style={{ background: "#f9f9f9", padding: "20px", borderRadius: "8px" }}>
+                      <h4 style={{ color: "#1e5bbf", marginBottom: "15px" }}>Exam Performance</h4>
+                      <p><strong>Exam Name:</strong> {selectedStudentResult.result?.exam_name}</p>
+                      <p><strong>Exam Type:</strong> {selectedStudentResult.result?.exam_type}</p>
+                      <p><strong>Score:</strong> <span className={selectedStudentResult.result?.percentage >= 40 ? styles.pass : styles.fail}>{selectedStudentResult.result?.percentage}%</span></p>
+                      <p><strong>Status:</strong> <span className={selectedStudentResult.result?.result_status === 'Pass' ? styles.pass : styles.fail}>{selectedStudentResult.result?.result_status}</span></p>
+                      <p><strong>Questions Attempted:</strong> {selectedStudentResult.result?.attempted_questions} / {selectedStudentResult.result?.total_questions}</p>
+                      <p><strong>Correct Answers:</strong> {selectedStudentResult.result?.correct_answers}</p>
+                      <p><strong>Time Taken:</strong> {Math.floor(selectedStudentResult.result?.time_taken_seconds / 60)}m {selectedStudentResult.result?.time_taken_seconds % 60}s</p>
+                    </div>
+                  </div>
+
+                  <h4 style={{ color: "#1e5bbf", marginBottom: "15px" }}>Question-wise Analysis</h4>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Q.No</th>
+                        <th>Question</th>
+                        <th>Your Answer</th>
+                        <th>Correct Answer</th>
+                        <th>Status</th>
+                        <th>Marks</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedStudentResult.responses.map((resp, idx) => (
+                        <tr key={idx}>
+                          <td>{idx + 1}</td>
+                          <td style={{ maxWidth: "300px", textAlign: "left" }}>{resp.question_text}</td>
+                          <td>{resp.selected_answer || 'N/A'}</td>
+                          <td>{resp.correct_option_label}</td>
+                          <td>
+                            <span style={{ color: resp.is_correct ? "green" : "red", fontWeight: "bold" }}>
+                              {resp.is_correct ? "Correct" : "Incorrect"}
+                            </span>
+                          </td>
+                          <td>{resp.is_correct ? resp.marks : 0}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           )}
 
           {/* SETTINGS */}
@@ -964,6 +1205,9 @@ export default function AdminDashboard() {
                       <tr>
                         <th>Exam Name</th>
                         <th>Exam Type</th>
+                        <th>Target Batch</th>
+                        <th>Target Year</th>
+                        <th>Assigned Students</th>
                         <th>Status</th>
                         <th>Date</th>
                         <th>Time</th>
@@ -978,6 +1222,9 @@ export default function AdminDashboard() {
                         <tr key={exam.exam_id}>
                           <td>{exam.exam_name}</td>
                           <td>{exam.exam_type}</td>
+                          <td>{exam.target_batch_name || 'All'}</td>
+                          <td>{exam.target_admission_year || 'All'}</td>
+                          <td>{exam.assigned_students || 0}</td>
                           <td><span className={styles.upcoming}>{exam.exam_status || 'Available'}</span></td>
                           <td>{exam.exam_date}</td>
                           <td>{exam.exam_time}</td>
@@ -988,7 +1235,7 @@ export default function AdminDashboard() {
                           </td>
                         </tr>
                       )) : (
-                        <tr><td colSpan="8">No exams created yet</td></tr>
+                        <tr><td colSpan="13">No exams created yet</td></tr>
                       )}
                     </tbody>
                   </table>

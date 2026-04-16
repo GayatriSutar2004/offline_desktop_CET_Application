@@ -69,27 +69,62 @@ export default function ExamPage() {
 
   const handleSubmit = async () => {
     setShowSubmitConfirm(false);
-    const studentId = 1; // Should get from login/session
-    const results = questions.map((q, i) => ({
-      student_id: studentId,
-      exam_id: examId,
-      question_id: q.question_id,
-      selected_answer: answers[i],
-      is_correct: answers[i] === q.correct_answer
-    }));
+    
+    // Get student data from localStorage
+    const storedStudentData = localStorage.getItem('student');
+    if (!storedStudentData) {
+      alert("Session expired. Please login again.");
+      router.push('/student-login');
+      return;
+    }
+    
+    const student = JSON.parse(storedStudentData);
+    const studentId = student.student_id;
+    
+    // Convert array of answers to object format expected by backend
+    const answersObj = {};
+    questions.forEach((q, i) => {
+      if (answers[i] !== null) {
+        // Map index back to option label (A, B, C, D)
+        const labels = ['A', 'B', 'C', 'D'];
+        answersObj[q.question_id] = labels[answers[i]];
+      }
+    });
 
     try {
-      for (let result of results) {
-        await fetch("http://localhost:3001/api/results/add", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(result)
-        });
+      setLoading(true);
+      const totalDuration = examDetails.duration_minutes * 60;
+      const timeTaken = totalDuration - timeLeft;
+
+      const res = await fetch("http://localhost:3001/api/exam-attempts", {
+        method: "POST",
+        headers: { 
+          "Accept": "application/json",
+          "Content-Type": "application/json" 
+        },
+        body: JSON.stringify({
+          student_id: studentId,
+          exam_id: examId,
+          answers: answersObj,
+          time_taken: Math.max(0, timeTaken)
+        })
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to submit exam");
       }
+
+      const result = await res.json();
       setSubmitted(true);
+      setLoading(false);
+      
+      // Redirect to result page
+      router.push(`/exam-result?attemptId=${result.attempt_id}`);
     } catch (err) {
-      console.log(err);
-      alert("Error submitting exam");
+      console.error("Submission error:", err);
+      setLoading(false);
+      alert("Error submitting exam: " + err.message);
     }
   };
 

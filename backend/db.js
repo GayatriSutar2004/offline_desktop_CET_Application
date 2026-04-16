@@ -1,7 +1,8 @@
 const mysql = require('mysql2');
 const dotenv = require('dotenv');
+const path = require('path');
 
-dotenv.config();
+dotenv.config({ path: path.join(__dirname, '.env') });
 
 // Create MySQL connection pool
 const pool = mysql.createPool({
@@ -11,11 +12,7 @@ const pool = mysql.createPool({
     database: process.env.DB_NAME || 'mock_test_db',
     waitForConnections: true,
     connectionLimit: 10,
-    queueLimit: 0,
-    acquireTimeout: 60000,
-    timeout: 60000,
-    reconnect: true,
-    idleTimeout: 300000
+    queueLimit: 0
 });
 
 // Test database connection

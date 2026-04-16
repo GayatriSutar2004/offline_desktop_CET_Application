@@ -19,6 +19,7 @@ export default function AdminLogin() {
       });
       const data = await res.json();
       if (data.message === "Login successful") {
+        localStorage.setItem('admin', JSON.stringify(data.admin));
         alert("Login Successful");
         router.push("/admin-dashboard");
       } else {

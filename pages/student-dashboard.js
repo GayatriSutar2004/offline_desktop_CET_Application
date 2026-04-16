@@ -8,6 +8,7 @@ export default function StudentDashboard() {
   const [exams, setExams] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeMenu, setActiveMenu] = useState("dashboard");
+  const [examTab, setExamTab] = useState("available"); // available, attempted, upcoming
 
   useEffect(() => {
     // Get student data from localStorage
@@ -17,17 +18,34 @@ export default function StudentDashboard() {
       return;
     }
     setStudentData(student);
-    fetchExams(student.exam_type);
+    fetchExams(student.student_id);
   }, []);
 
-  const fetchExams = async (studentExamType) => {
+  const fetchExams = async (studentId) => {
     try {
-      const res = await fetch('http://localhost:3001/api/exams');
-      const allExams = await res.json();
+      const res = await fetch(`http://localhost:3001/api/student-exams/available/${studentId}`);
+      const data = await res.json();
       
-      // Filter exams by student's exam type
-      const filteredExams = allExams.filter(exam => exam.exam_type === studentExamType);
-      setExams(filteredExams);
+      // Fetch attempted exams to mark status
+      const attemptRes = await fetch(`http://localhost:3001/api/exam-attempts/student/${studentId}`);
+      const attemptData = await attemptRes.json();
+      const attemptedExamIds = Array.isArray(attemptData) ? attemptData.map(a => a.exam_id) : [];
+
+      const enrichedExams = (data.available_exams || []).map(exam => {
+        if (attemptedExamIds.includes(exam.exam_id)) {
+          return { ...exam, exam_status: 'Completed' };
+        }
+        // If the exam date is in the future, mark as Scheduled
+        const examDate = new Date(exam.exam_date);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        if (examDate > today) {
+          return { ...exam, exam_status: 'Scheduled' };
+        }
+        return { ...exam, exam_status: exam.exam_status || 'Available' };
+      });
+
+      setExams(enrichedExams);
       setLoading(false);
     } catch (err) {
       console.error('Error fetching exams:', err);
@@ -61,9 +79,9 @@ export default function StudentDashboard() {
       {/* HEADER */}
       <div className={styles.header}>
         <h2>Vijeta Foundation - Student Portal</h2>
-        <div className={styles.profile}>
+        <div className={styles.profileInfo}>
           <span>{studentData?.student_name}</span>
-          <button onClick={handleLogout} className={styles.button}>Logout</button>
+          <button onClick={handleLogout} className={`${styles.button} ${styles.logoutBtn}`}>Logout</button>
         </div>
       </div>
 
@@ -80,35 +98,86 @@ export default function StudentDashboard() {
           {/* DASHBOARD */}
           {activeMenu === "dashboard" && (
             <>
-              <h2 style={{ textAlign: "center" }}>Welcome, {studentData?.student_name}!</h2>
+              <h2 style={{ marginBottom: "25px" }}>Welcome, {studentData?.student_name}!</h2>
               
               <div className={styles.card}>
-                <h3>Your Exam Type: {studentData?.exam_type}</h3>
-                <p>Available Exams: {exams.length}</p>
-                <p>Batch: {studentData?.batch_name}</p>
-                <p>Roll No: {studentData?.roll_no}</p>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+                  <div>
+                    <p><strong>Batch:</strong> {studentData?.batch_name}</p>
+                    <p><strong>Roll No:</strong> {studentData?.roll_no}</p>
+                  </div>
+                  <div>
+                    <p><strong>Exam Type:</strong> {studentData?.exam_type}</p>
+                    <p><strong>Total Exams:</strong> {exams.length}</p>
+                  </div>
+                </div>
               </div>
 
-              <h3>Available {studentData?.exam_type} Exams</h3>
+              <div className={styles.tabs}>
+                <div 
+                  className={`${styles.tab} ${examTab === 'available' ? styles.activeTab : ''}`}
+                  onClick={() => setExamTab('available')}
+                >
+                  Available
+                </div>
+                <div 
+                  className={`${styles.tab} ${examTab === 'attempted' ? styles.activeTab : ''}`}
+                  onClick={() => setExamTab('attempted')}
+                >
+                  Attempted
+                </div>
+                <div 
+                  className={`${styles.tab} ${examTab === 'upcoming' ? styles.activeTab : ''}`}
+                  onClick={() => setExamTab('upcoming')}
+                >
+                  Upcoming
+                </div>
+              </div>
+
               <div className={styles.examGrid}>
-                {exams.length > 0 ? exams.map((exam) => (
-                  <div key={exam.exam_id} className={styles.examCard}>
-                    <h4>{exam.exam_name}</h4>
-                    <p><strong>Date:</strong> {exam.exam_date}</p>
-                    <p><strong>Time:</strong> {exam.exam_time}</p>
-                    <p><strong>Duration:</strong> {exam.duration_minutes} minutes</p>
-                    <p><strong>Questions:</strong> {exam.total_questions}</p>
-                    <p><strong>Status:</strong> <span className={styles.upcoming}>{exam.exam_status || 'Available'}</span></p>
-                    <button 
-                      className={styles.button}
-                      onClick={() => handleExamClick(exam.exam_id)}
-                    >
-                      Start Exam
-                    </button>
-                  </div>
-                )) : (
-                  <p>No {studentData?.exam_type} exams available at the moment.</p>
-                )}
+                {(() => {
+                  const filteredExams = exams.filter(exam => {
+                    const status = (exam.exam_status || 'Available').toLowerCase();
+                    if (examTab === 'available') return status === 'available' || status === 'active';
+                    if (examTab === 'attempted') return status === 'completed';
+                    if (examTab === 'upcoming') return status === 'scheduled' || status === 'upcoming';
+                    return true;
+                  });
+
+                  if (filteredExams.length === 0) {
+                    return <p style={{ gridColumn: "1/-1", textAlign: "center", padding: "40px", color: "#666" }}>
+                      No {examTab} exams found for your batch.
+                    </p>;
+                  }
+
+                  return filteredExams.map((exam) => (
+                    <div key={exam.exam_id} className={styles.examCard}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
+                        <h4>{exam.exam_name}</h4>
+                        <span className={`${styles.badge} ${styles[(exam.exam_status || 'Available').toLowerCase()] || styles.available}`}>
+                          {exam.exam_status || 'Available'}
+                        </span>
+                      </div>
+                      <p>📅 <strong>Date:</strong> {new Date(exam.exam_date).toLocaleDateString()}</p>
+                      <p>⏰ <strong>Time:</strong> {exam.exam_time}</p>
+                      <p>⌛ <strong>Duration:</strong> {exam.duration_minutes} minutes</p>
+                      <p>📝 <strong>Questions:</strong> {exam.total_questions}</p>
+                      
+                      <button 
+                        className={styles.button}
+                        onClick={() => handleExamClick(exam.exam_id)}
+                        disabled={examTab === 'attempted' || examTab === 'upcoming'}
+                        style={{ 
+                          marginTop: "auto",
+                          opacity: (examTab === 'attempted' || examTab === 'upcoming') ? 0.6 : 1,
+                          cursor: (examTab === 'attempted' || examTab === 'upcoming') ? 'not-allowed' : 'pointer'
+                        }}
+                      >
+                        {examTab === 'attempted' ? 'Already Attempted' : examTab === 'upcoming' ? 'Coming Soon' : 'Start Exam'}
+                      </button>
+                    </div>
+                  ));
+                })()}
               </div>
             </>
           )}
@@ -116,7 +185,7 @@ export default function StudentDashboard() {
           {/* MY EXAMS */}
           {activeMenu === "exams" && (
             <>
-              <h2 style={{ textAlign: "center" }}>My {studentData?.exam_type} Exams</h2>
+              <h2 style={{ marginBottom: "25px" }}>My {studentData?.exam_type} Exams</h2>
               
               <table className={styles.table}>
                 <thead>
@@ -132,22 +201,33 @@ export default function StudentDashboard() {
                 <tbody>
                   {exams.length > 0 ? exams.map((exam) => (
                     <tr key={exam.exam_id}>
-                      <td>{exam.exam_name}</td>
-                      <td>{exam.exam_date}</td>
+                      <td><strong>{exam.exam_name}</strong></td>
+                      <td>{new Date(exam.exam_date).toLocaleDateString()}</td>
                       <td>{exam.exam_time}</td>
                       <td>{exam.duration_minutes} min</td>
-                      <td><span className={styles.upcoming}>{exam.exam_status || 'Available'}</span></td>
+                      <td>
+                        <span className={`${styles.badge} ${styles[(exam.exam_status || 'Available').toLowerCase()] || styles.available}`}>
+                          {exam.exam_status || 'Available'}
+                        </span>
+                      </td>
                       <td>
                         <button 
-                          className={styles.button}
+                          className={`${styles.button} ${styles.actionBtn}`}
                           onClick={() => handleExamClick(exam.exam_id)}
+                          disabled={(exam.exam_status || 'Available').toLowerCase() === 'completed' || (exam.exam_status || 'Available').toLowerCase() === 'scheduled'}
+                          style={{ 
+                            padding: "8px 15px", 
+                            fontSize: "14px", 
+                            marginTop: 0,
+                            opacity: ((exam.exam_status || 'Available').toLowerCase() === 'completed' || (exam.exam_status || 'Available').toLowerCase() === 'scheduled') ? 0.6 : 1
+                          }}
                         >
-                          Start
+                          {(exam.exam_status || 'Available').toLowerCase() === 'completed' ? 'Attempted' : 'Start'}
                         </button>
                       </td>
                     </tr>
                   )) : (
-                    <tr><td colSpan="6">No exams available</td></tr>
+                    <tr><td colSpan="6" style={{ textAlign: "center", padding: "30px" }}>No exams available</td></tr>
                   )}
                 </tbody>
               </table>
@@ -157,10 +237,45 @@ export default function StudentDashboard() {
           {/* RESULTS */}
           {activeMenu === "results" && (
             <>
-              <h2 style={{ textAlign: "center" }}>Exam Results</h2>
+              <h2 style={{ marginBottom: "25px" }}>My Exam Results</h2>
               
-              <div className={styles.card}>
-                <p>No results available yet. Complete exams to see your results here.</p>
+              <div className={styles.examGrid}>
+                {exams.filter(e => e.exam_status === 'Completed').length > 0 ? (
+                  exams.filter(e => e.exam_status === 'Completed').map((exam) => (
+                    <div key={exam.exam_id} className={styles.examCard}>
+                      <h4>{exam.exam_name}</h4>
+                      <p>📅 <strong>Date:</strong> {new Date(exam.exam_date).toLocaleDateString()}</p>
+                      <p>⌛ <strong>Duration:</strong> {exam.duration_minutes} minutes</p>
+                      <p>📝 <strong>Total Questions:</strong> {exam.total_questions}</p>
+                      <span className={`${styles.badge} ${styles.attempted}`} style={{ marginTop: "15px", display: "inline-block", width: "fit-content" }}>
+                        Completed
+                      </span>
+                      <button 
+                        className={styles.button}
+                        onClick={() => {
+                          // Find attempt ID for this exam
+                          fetch(`http://localhost:3001/api/exam-attempts/student/${studentData.student_id}`)
+                            .then(res => res.json())
+                            .then(attempts => {
+                              const attempt = attempts.find(a => a.exam_id === exam.exam_id);
+                              if (attempt) {
+                                router.push(`/exam-result?attemptId=${attempt.attempt_id}`);
+                              } else {
+                                alert("Result details not found.");
+                              }
+                            });
+                        }}
+                        style={{ marginTop: "20px" }}
+                      >
+                        View Result
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <div className={styles.card} style={{ gridColumn: "1/-1", textAlign: "center" }}>
+                    <p>No results available yet. Complete exams to see your results here.</p>
+                  </div>
+                )}
               </div>
             </>
           )}

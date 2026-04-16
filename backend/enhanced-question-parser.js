@@ -6,6 +6,7 @@ class EnhancedQuestionParser {
         this.currentSection = null;
         this.currentQuestion = null;
         this.questions = [];
+        this.answerKeyMap = new Map();
     }
 
     async parseWordDocument(filePath) {
@@ -38,10 +39,28 @@ class EnhancedQuestionParser {
     }
 
     parseDocumentContent(text) {
+        this.sections = [];
+        this.currentSection = null;
+        this.currentQuestion = null;
+        this.questions = [];
+        this.answerKeyMap = new Map();
+
         const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+        let inAnswerKey = false;
         
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
+
+            if (this.isAnswerKeyHeader(line)) {
+                this.finalizeCurrentQuestion();
+                inAnswerKey = true;
+                continue;
+            }
+
+            if (inAnswerKey) {
+                this.collectAnswerKey(line);
+                continue;
+            }
             
             // Detect section headers
             if (this.isSectionHeader(line)) {
@@ -71,31 +90,28 @@ class EnhancedQuestionParser {
         
         // Finalize the last question
         this.finalizeCurrentQuestion();
+        this.applyAnswerKey();
     }
 
     isSectionHeader(line) {
         const sectionPatterns = [
-            /^Section\s+\d+/i,
-            /^Part\s+\d+/i,
-            /^[A-Z]+\s+SECTION/i,
-            /^UNIT\s+\d+/i,
-            /^CHAPTER\s+\d+/i,
-            /^\d+\.\s*[A-Z]+/i,
-            /^[A-Z]+\s*\d+/i
+            /^Section\s*\d+\s*[:\-–]/i,
+            /^Section\d+\s*[:\-–]/i,
+            /^Part\s*\d+\s*[:\-–]/i,
+            /^[A-Z]+\s+SECTION\b/i,
+            /^UNIT\s+\d+\b/i,
+            /^CHAPTER\s+\d+\b/i
         ];
         
         // Check if it's a section header AND not a question
-        return sectionPatterns.some(pattern => pattern.test(line)) && !line.match(/^Question\s*\d+/i);
+        return sectionPatterns.some(pattern => pattern.test(line)) && !this.isQuestionStart(line);
     }
 
     isQuestionStart(line) {
         const questionPatterns = [
-            /^Q\s*\d+/i,
+            /^Q\.?\s*\d+/i,
             /^Question\s*\d+/i,
-            /^\d+\.\s*/i,
-            /^\d+\)\s*/i,
-            /^(\d+)\./i,
-            /^(\d+)[\.\)]/i
+            /^\d+[\.\)]\s*/i
         ];
         
         return questionPatterns.some(pattern => pattern.test(line)) && !this.isSectionHeader(line);
@@ -129,6 +145,10 @@ class EnhancedQuestionParser {
         return answerPatterns.some(pattern => pattern.test(line));
     }
 
+    isAnswerKeyHeader(line) {
+        return /^(Answer\s*Key|AnswerKey|Anser\s*Key|AnserKey)\s*[:\-]/i.test(line);
+    }
+
     isExplanation(line) {
         const explanationPatterns = [
             /^Explanation\s*[:\-]/i,
@@ -157,9 +177,12 @@ class EnhancedQuestionParser {
     startNewQuestion(line) {
         // Finalize previous question
         this.finalizeCurrentQuestion();
+
+        const parsedQuestion = this.extractQuestionMetadata(line);
         
         this.currentQuestion = {
-            question_text: line,
+            question_number: parsedQuestion.number,
+            question_text: parsedQuestion.text,
             options: [],
             correct_answer: null,
             explanation: null,
@@ -173,10 +196,10 @@ class EnhancedQuestionParser {
         if (!this.currentQuestion) return;
         
         // Clean the option text
-        const cleanOption = line.replace(/^[A-D\.\)\(\s]+/i, '').trim();
+        const cleanOption = line.replace(/^\(?([A-D])[\.\)]\s*/i, '').trim();
         
         // Extract option letter
-        const optionLetter = line.match(/^[A-D]/i)?.[0].toUpperCase();
+        const optionLetter = line.match(/^\(?([A-D])[\.\)]/i)?.[1]?.toUpperCase();
         
         this.currentQuestion.options.push({
             label: optionLetter,
@@ -234,6 +257,47 @@ class EnhancedQuestionParser {
             console.log('Finalized question with', this.currentQuestion.options.length, 'options');
             
             this.currentQuestion = null;
+        }
+    }
+
+    extractQuestionMetadata(line) {
+        const patterns = [
+            /^Q\.?\s*(\d+)\s*[\.\):\-]?\s*(.+)$/i,
+            /^Question\s*(\d+)\s*[:\.\)-]?\s*(.+)$/i,
+            /^(\d+)\s*[\.\)]\s*(.+)$/i
+        ];
+
+        for (const pattern of patterns) {
+            const match = line.match(pattern);
+            if (match) {
+                return {
+                    number: Number(match[1]),
+                    text: match[2].trim()
+                };
+            }
+        }
+
+        return {
+            number: null,
+            text: line.trim()
+        };
+    }
+
+    collectAnswerKey(line) {
+        const answerMatches = line.matchAll(/Q\.?\s*(\d+)\s*[\.\):\-]?\s*([A-D])/gi);
+
+        for (const match of answerMatches) {
+            this.answerKeyMap.set(Number(match[1]), match[2].toUpperCase());
+        }
+    }
+
+    applyAnswerKey() {
+        if (this.answerKeyMap.size === 0) return;
+
+        for (const question of this.questions) {
+            if (question.question_number && this.answerKeyMap.has(question.question_number)) {
+                question.correct_answer = this.answerKeyMap.get(question.question_number);
+            }
         }
     }
 
