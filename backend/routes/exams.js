@@ -184,14 +184,22 @@ async function assignExamToEligibleStudents(examId, { examType, targetBatchName,
     params
   );
 
+  let assignedCount = 0;
   for (const student of students) {
-    await db.query(
-      'INSERT INTO exam_students (exam_id, student_id) VALUES (?, ?)',
-      [examId, student.student_id]
-    );
+    try {
+      await db.query(
+        'INSERT IGNORE INTO exam_students (exam_id, student_id) VALUES (?, ?)',
+        [examId, student.student_id]
+      );
+      assignedCount++;
+    } catch (err) {
+      if (err.code !== 'ER_DUP_ENTRY') {
+        console.error(`Failed to assign student ${student.student_id}:`, err.message);
+      }
+    }
   }
 
-  return students.length;
+  return assignedCount;
 }
 
 async function insertParsedQuestions(parsedData, examId, filePath, res, assignmentConfig) {
