@@ -166,40 +166,56 @@ router.post('/add', upload.single('file'), async (req, res) => {
 });
 
 async function assignExamToEligibleStudents(examId, { examType, targetBatchName, targetAdmissionYear }) {
-  const filters = ['exam_type = ?'];
-  const params = [examType];
+  try {
+    const filters = ['exam_type = ?'];
+    const params = [examType];
 
-  if (targetBatchName) {
-    filters.push('batch_name = ?');
-    params.push(targetBatchName);
-  }
+    if (targetBatchName) {
+      filters.push('batch_name = ?');
+      params.push(targetBatchName);
+    }
 
-  if (targetAdmissionYear) {
-    filters.push('admission_year = ?');
-    params.push(Number(targetAdmissionYear));
-  }
+    if (targetAdmissionYear) {
+      filters.push('admission_year = ?');
+      params.push(Number(targetAdmissionYear));
+    }
 
-  const [students] = await db.query(
-    `SELECT student_id FROM students WHERE ${filters.join(' AND ')} AND account_status = 'Active'`,
-    params
-  );
-
-  let assignedCount = 0;
-  for (const student of students) {
+    // First check if account_status column exists
+    let query = `SELECT student_id FROM students WHERE ${filters.join(' AND ')}`;
+    
+    // Try to add account_status filter - if column doesn't exist, this won't affect results much
     try {
-      await db.query(
-        'INSERT IGNORE INTO exam_students (exam_id, student_id) VALUES (?, ?)',
-        [examId, student.student_id]
-      );
-      assignedCount++;
-    } catch (err) {
-      if (err.code !== 'ER_DUP_ENTRY') {
-        console.error(`Failed to assign student ${student.student_id}:`, err.message);
+      const [testResult] = await db.query('SELECT account_status FROM students LIMIT 1');
+      query += ' AND (account_status = "Active" OR account_status IS NULL OR account_status = "")';
+    } catch (colErr) {
+      // Column doesn't exist, just skip the account_status filter
+      console.log('account_status column not found, skipping account status filter');
+    }
+
+    const [students] = await db.query(query, params);
+
+    console.log(`Found ${students.length} students with exam_type: ${examType}`);
+
+    let assignedCount = 0;
+    for (const student of students) {
+      try {
+        await db.query(
+          'INSERT IGNORE INTO exam_students (exam_id, student_id) VALUES (?, ?)',
+          [examId, student.student_id]
+        );
+        assignedCount++;
+      } catch (err) {
+        if (err.code !== 'ER_DUP_ENTRY') {
+          console.error(`Failed to assign student ${student.student_id}:`, err.message);
+        }
       }
     }
-  }
 
-  return assignedCount;
+    return assignedCount;
+  } catch (err) {
+    console.error('Error in assignExamToEligibleStudents:', err.message);
+    return 0;
+  }
 }
 
 async function insertParsedQuestions(parsedData, examId, filePath, res, assignmentConfig) {

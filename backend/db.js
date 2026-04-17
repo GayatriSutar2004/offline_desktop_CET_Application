@@ -4,26 +4,37 @@ const path = require('path');
 
 dotenv.config({ path: path.join(__dirname, '.env') });
 
-// Create MySQL connection pool
-const pool = mysql.createPool({
-    host: process.env.DB_HOST || 'localhost',
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || 'mock_test_db',
+const dbHost = process.env.DB_HOST || 'localhost';
+const dbUser = process.env.DB_USER || 'root';
+const dbPassword = process.env.DB_PASSWORD || '';
+const dbName = process.env.DB_NAME || 'mock_test_db';
+const dbPort = process.env.DB_PORT || 3306;
+const useSSL = process.env.DB_SSL_MODE === 'REQUIRED';
+
+const poolConfig = {
+    host: dbHost,
+    user: dbUser,
+    password: dbPassword,
+    database: dbName,
+    port: dbPort,
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0
-});
+};
 
-// Test database connection
+if (useSSL) {
+    poolConfig.ssl = { rejectUnauthorized: false };
+}
+
+const pool = mysql.createPool(poolConfig);
+
 pool.getConnection((err, connection) => {
     if (err) {
-        console.error("MySQL connection error:", err);
+        console.error("MySQL connection error:", err.message);
     } else {
         console.log("Connected to MySQL database");
-        connection.release(); // Release the connection back to the pool
+        connection.release();
     }
 });
 
-// Export pool with promise support
 module.exports = pool.promise();
