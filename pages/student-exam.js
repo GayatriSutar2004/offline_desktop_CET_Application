@@ -176,7 +176,7 @@ const getFullscreenElement = () =>
 
     const checkExamAccess = async (examId, studentId) => {
         try {
-            const response = await fetch(`http://localhost:3001/api/student-exams/${examId}/check-access/${studentId}`);
+            const response = await fetch(`http://vijeta-api.onrender.com/api/student-exams/${examId}/check-access/${studentId}`);
             const data = await response.json();
 
             if (response.status === 403 || response.status === 404) {
@@ -200,7 +200,7 @@ const getFullscreenElement = () =>
 
     const loadExamQuestions = async (examId, studentId) => {
         try {
-            const response = await fetch(`http://localhost:3001/api/student-exams/${examId}/questions/${studentId}`);
+            const response = await fetch(`http://vijeta-api.onrender.com/api/student-exams/${examId}/questions/${studentId}`);
             const data = await response.json();
 
             if (response.ok) {
@@ -297,7 +297,7 @@ const getFullscreenElement = () =>
             const totalDuration = currentExamData.exam.duration_minutes * 60;
             const timeTaken = totalDuration - (timeRemainingRef.current || 0);
 
-            const response = await fetch('http://localhost:3001/api/exam-attempts', {
+            const response = await fetch('http://vijeta-api.onrender.com/api/exam-attempts', {
                 method: 'POST',
                 headers: {
                     'Accept': 'application/json',
@@ -646,3 +646,4 @@ const getFullscreenElement = () =>
         </div>
     );
 }
+

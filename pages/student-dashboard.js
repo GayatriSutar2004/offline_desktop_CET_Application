@@ -23,11 +23,11 @@ export default function StudentDashboard() {
 
   const fetchExams = async (studentId) => {
     try {
-      const res = await fetch(`http://localhost:3001/api/student-exams/available/${studentId}`);
+      const res = await fetch(`http://vijeta-api.onrender.com/api/student-exams/available/${studentId}`);
       const data = await res.json();
       
       // Fetch attempted exams to mark status
-      const attemptRes = await fetch(`http://localhost:3001/api/exam-attempts/student/${studentId}`);
+      const attemptRes = await fetch(`http://vijeta-api.onrender.com/api/exam-attempts/student/${studentId}`);
       const attemptData = await attemptRes.json();
       const attemptedExamIds = Array.isArray(attemptData) ? attemptData.map(a => a.exam_id) : [];
 
@@ -254,7 +254,7 @@ export default function StudentDashboard() {
                         className={styles.button}
                         onClick={() => {
                           // Find attempt ID for this exam
-                          fetch(`http://localhost:3001/api/exam-attempts/student/${studentData.student_id}`)
+                          fetch(`http://vijeta-api.onrender.com/api/exam-attempts/student/${studentData.student_id}`)
                             .then(res => res.json())
                             .then(attempts => {
                               const attempt = attempts.find(a => a.exam_id === exam.exam_id);
@@ -303,3 +303,4 @@ export default function StudentDashboard() {
     </div>
   );
 }
+

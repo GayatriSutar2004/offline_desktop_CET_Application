@@ -16,7 +16,7 @@ export default function StudentLogin() {
     }
 
     try {
-      const res = await fetch("http://localhost:3001/api/students/login", {
+      const res = await fetch("http://vijeta-api.onrender.com/api/students/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
