@@ -23,7 +23,20 @@ const getFullscreenElement = () =>
     document.msFullscreenElement ||
     null;
 
-export default function StudentExam() {
+    const isQuestionAnswered = (questionId, answersObj) => {
+        return answersObj[questionId] !== undefined && answersObj[questionId] !== null && answersObj[questionId] !== '';
+    };
+
+    const getSectionQuestionCount = (sectionName, questionsBySection) => {
+        return (questionsBySection[sectionName] || []).length;
+    };
+
+    const getSectionAnsweredCount = (sectionName, questionsBySection, answersObj) => {
+        const sectionQuestions = questionsBySection[sectionName] || [];
+        return sectionQuestions.filter(q => isQuestionAnswered(q.question_id, answersObj)).length;
+    };
+
+    export default function StudentExam() {
     const router = useRouter();
     const answersRef = useRef({});
     const timeRemainingRef = useRef(null);
@@ -368,6 +381,33 @@ export default function StudentExam() {
         ? questionsBySection[firstSectionKey]?.[0]?.marks || 1
         : 1;
 
+    const getAllQuestionsFlat = () => {
+        const allQuestions = [];
+        sections.forEach(sectionName => {
+            const sectionQuestions = questionsBySection[sectionName] || [];
+            sectionQuestions.forEach((q, idx) => {
+                allQuestions.push({
+                    ...q,
+                    sectionIndex: sections.indexOf(sectionName),
+                    questionIndex: idx
+                });
+            });
+        });
+        return allQuestions;
+    };
+
+    const allQuestionsList = getAllQuestionsFlat();
+
+    const goToQuestion = (question) => {
+        setCurrentSection(question.sectionIndex);
+        setTimeout(() => {
+            const questionElement = document.getElementById(`question-${question.question_id}`);
+            if (questionElement) {
+                questionElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }, 100);
+    };
+
     if (loading) {
         return (
             <div className={styles.container}>
@@ -474,17 +514,51 @@ export default function StudentExam() {
                 </div>
 
                 <div className={styles.sectionNav}>
-                    <h3>Sections</h3>
-                    <div className={styles.sectionTabs}>
-                        {sections.map((section, index) => (
-                            <button
-                                key={section}
-                                className={`${styles.sectionTab} ${currentSection === index ? styles.activeTab : ''}`}
-                                onClick={() => setCurrentSection(index)}
-                            >
-                                {section}
-                            </button>
-                        ))}
+                    <div className={styles.sectionTabsContainer}>
+                        <div className={styles.sectionTabs}>
+                            <h3>Sections</h3>
+                            {sections.map((section, index) => {
+                                const totalInSection = getSectionQuestionCount(section, questionsBySection);
+                                const answeredInSection = getSectionAnsweredCount(section, questionsBySection, answers);
+                                return (
+                                    <button
+                                        key={section}
+                                        className={`${styles.sectionTab} ${currentSection === index ? styles.activeTab : ''}`}
+                                        onClick={() => setCurrentSection(index)}
+                                    >
+                                        <span className={styles.sectionTabName}>{section}</span>
+                                        <span className={styles.sectionTabCount}>
+                                            {answeredInSection}/{totalInSection}
+                                        </span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <div className={styles.questionPalette}>
+                            <h3>Question Palette</h3>
+                            <div className={styles.paletteGrid}>
+                                {allQuestionsList.map((q, idx) => (
+                                    <button
+                                        key={q.question_id}
+                                        className={`${styles.paletteButton} ${isQuestionAnswered(q.question_id, answers) ? styles.paletteAnswered : ''}`}
+                                        onClick={() => goToQuestion(q)}
+                                        title={`Q${idx + 1}${isQuestionAnswered(q.question_id, answers) ? ' (Answered)' : ''}`}
+                                    >
+                                        {idx + 1}
+                                    </button>
+                                ))}
+                            </div>
+                            <div className={styles.paletteLegend}>
+                                <span className={styles.legendItem}>
+                                    <span className={`${styles.legendBox} ${styles.legendAnswered}`}></span>
+                                    Answered
+                                </span>
+                                <span className={styles.legendItem}>
+                                    <span className={`${styles.legendBox} ${styles.legendNotAnswered}`}></span>
+                                    Not Answered
+                                </span>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -496,11 +570,13 @@ export default function StudentExam() {
                         >
                             <h3 className={styles.sectionTitle}>{sectionName}</h3>
 
-                            {(questionsBySection[sectionName] || []).map((question, questionIndex) => (
-                                <div key={question.question_id} className={styles.questionCard}>
+                            {(questionsBySection[sectionName] || []).map((question, questionIndex) => {
+                                const globalIndex = sections.slice(0, sectionIndex).reduce((acc, sec) => acc + (questionsBySection[sec] || []).length, 0) + questionIndex + 1;
+                                return (
+                                <div key={question.question_id} id={`question-${question.question_id}`} className={styles.questionCard}>
                                     <div className={styles.questionHeader}>
                                         <span className={styles.questionNumber}>
-                                            Q{questionIndex + 1}
+                                            Q{globalIndex}
                                         </span>
                                         <span className={styles.marks}>
                                             ({question.marks} marks)
@@ -551,7 +627,8 @@ export default function StudentExam() {
                                         })}
                                     </div>
                                 </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     ))}
                 </div>

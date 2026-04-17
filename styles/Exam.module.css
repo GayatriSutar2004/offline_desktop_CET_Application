@@ -113,10 +113,22 @@
   font-size: 18px;
 }
 
+.sectionTabsContainer {
+  display: flex;
+  gap: 30px;
+  flex-wrap: wrap;
+}
+
 .sectionTabs {
   display: flex;
+  flex-direction: column;
   gap: 10px;
-  flex-wrap: wrap;
+}
+
+.sectionTabs h3 {
+  margin: 0 0 10px 0;
+  color: #2c3e50;
+  font-size: 16px;
 }
 
 .sectionTab {
@@ -128,6 +140,10 @@
   cursor: pointer;
   transition: all 0.3s ease;
   font-weight: 500;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-width: 180px;
 }
 
 .sectionTab:hover {
@@ -139,6 +155,98 @@
   background: #007bff;
   color: white;
   box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
+}
+
+.sectionTabName {
+  font-weight: 500;
+}
+
+.sectionTabCount {
+  background: rgba(0, 0, 0, 0.15);
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+}
+
+.questionPalette {
+  display: flex;
+  flex-direction: column;
+}
+
+.questionPalette h3 {
+  margin: 0 0 15px 0;
+  color: #2c3e50;
+  font-size: 16px;
+}
+
+.paletteGrid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  max-width: 280px;
+}
+
+.paletteButton {
+  width: 40px;
+  height: 40px;
+  border: 2px solid #dee2e6;
+  background: white;
+  color: #495057;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.paletteButton:hover {
+  border-color: #007bff;
+  background: #f0f8ff;
+  transform: scale(1.05);
+}
+
+.paletteAnswered {
+  background: #28a745;
+  border-color: #28a745;
+  color: white;
+}
+
+.paletteAnswered:hover {
+  background: #218838;
+  border-color: #218838;
+}
+
+.paletteLegend {
+  display: flex;
+  gap: 20px;
+  margin-top: 15px;
+  font-size: 12px;
+  color: #6c757d;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legendBox {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+}
+
+.legendAnswered {
+  background: #28a745;
+  border: 1px solid #1e7e34;
+}
+
+.legendNotAnswered {
+  background: white;
+  border: 2px solid #dee2e6;
 }
 
 .questionsContainer {
@@ -356,7 +464,33 @@
     gap: 20px;
   }
   
+  .sectionTabsContainer {
+    flex-direction: column;
+  }
+  
   .sectionTabs {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  
+  .sectionTab {
+    min-width: auto;
+  }
+  
+  .paletteGrid {
+    grid-template-columns: repeat(5, 1fr);
+    max-width: 100%;
+  }
+  
+  .paletteButton {
+    width: 36px;
+    height: 36px;
+    font-size: 13px;
+  }
+  
+  .paletteLegend {
+    flex-wrap: wrap;
     justify-content: center;
   }
 

@@ -58,20 +58,25 @@ router.post('/', async (req, res) => {
         const attemptId = attemptResult.insertId;
         console.log(`Attempt ID created: ${attemptId}`);
         
+        const labelToNumber = { 'A': 1, 'B': 2, 'C': 3, 'D': 4, 'E': 5, 'F': 6, 'G': 7, 'H': 8 };
+
         for (const [questionId, selectedAnswer] of Object.entries(answers || {})) {
-            console.log(`Processing question ID: ${questionId}`);
+            console.log(`Processing question ID: ${questionId}, Answer: ${selectedAnswer}`);
             const [correctAnswer] = await connection.query(`
                 SELECT qo.option_label 
                 FROM question_options qo
                 WHERE qo.question_id = ? AND qo.is_correct = 1
             `, [questionId]);
             
-            const isCorrect = correctAnswer.length > 0 && correctAnswer[0].option_label === selectedAnswer ? 1 : 0;
+            const numericAnswer = labelToNumber[selectedAnswer] || selectedAnswer;
+            const correctLabel = correctAnswer.length > 0 ? correctAnswer[0].option_label : null;
+            const numericCorrect = correctLabel ? (labelToNumber[correctLabel] || correctLabel) : null;
+            const isCorrect = correctLabel && correctLabel === selectedAnswer ? 1 : 0;
             
             await connection.query(`
                 INSERT INTO student_responses (attempt_id, question_id, selected_answer, is_correct)
                 VALUES (?, ?, ?, ?)
-            `, [attemptId, questionId, selectedAnswer, isCorrect]);
+            `, [attemptId, questionId, numericAnswer, isCorrect]);
         }
         
         console.log('Calculating performance...');

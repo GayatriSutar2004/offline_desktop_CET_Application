@@ -26,6 +26,7 @@ export default function AdminDashboard() {
   const [hour, setHour] = useState("");
   const [minute, setMinute] = useState("");
   const [date, setDate] = useState("");
+  const [editingExam, setEditingExam] = useState(null);
 
   // Student form state
   const [sName, setSName] = useState("");
@@ -222,6 +223,66 @@ export default function AdminDashboard() {
     } catch (err) {
       console.log(err);
       alert("Error fetching exams");
+    }
+  };
+
+  const handleEditExam = (exam) => {
+    setEditingExam(exam);
+    setExamName(exam.exam_name);
+    setDate(exam.exam_date || "");
+    const timeParts = (exam.exam_time || "09:00:00").split(":");
+    setHour(timeParts[0] || "09");
+    setMinute(timeParts[1] || "00");
+    setEditMode(true);
+  };
+
+  const handleDeleteExam = async (examId) => {
+    if (!window.confirm("Are you sure you want to delete this exam? This action cannot be undone.")) {
+      return;
+    }
+    try {
+      const res = await fetch(`http://localhost:3001/api/exams/${examId}`, {
+        method: "DELETE"
+      });
+      if (res.ok) {
+        alert("Exam deleted successfully");
+        fetchExams();
+        setEditMode(false);
+        setEditingExam(null);
+      } else {
+        const error = await res.json();
+        alert("Error deleting exam: " + (error.message || error.error));
+      }
+    } catch (err) {
+      console.log("Error deleting exam:", err);
+      alert("Error deleting exam");
+    }
+  };
+
+  const handleUpdateExam = async () => {
+    if (!editingExam) return;
+    try {
+      const res = await fetch(`http://localhost:3001/api/exams/${editingExam.exam_id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          exam_name: examName,
+          exam_date: date,
+          exam_time: `${hour}:${minute}:00`
+        })
+      });
+      if (res.ok) {
+        alert("Exam updated successfully");
+        fetchExams();
+        setEditMode(false);
+        setEditingExam(null);
+      } else {
+        const error = await res.json();
+        alert("Error updating exam: " + (error.message || error.error));
+      }
+    } catch (err) {
+      console.log("Error updating exam:", err);
+      alert("Error updating exam");
     }
   };
 
@@ -923,40 +984,6 @@ export default function AdminDashboard() {
             </>
           )}
 
-  {/* Helper function to download results as CSV */}
-              const downloadResultsCSV = (data, filename) => {
-                const headers = ['Roll No', 'Student Name', 'Email', 'Batch', 'Exam', 'Exam Type', 'Target Batch', 'Target Year', 'Percentage', 'Status', 'Correct Answers', 'Total Questions', 'Time Taken (min)', 'Attempted Date'];
-                const csvRows = [headers.join(',')];
-                
-                data.forEach(r => {
-                  const row = [
-                    r.roll_no || '',
-                    r.student_name || '',
-                    r.email || '',
-                    r.batch_name || '',
-                    r.exam_name || '',
-                    r.exam_type || '',
-                    r.target_batch_name || '',
-                    r.target_admission_year || '',
-                    r.percentage + '%',
-                    r.result_status || '',
-                    r.correct_answers || 0,
-                    r.total_questions || 0,
-                    Math.floor((r.time_taken_seconds || 0) / 60),
-                    new Date(r.submitted_at || r.start_time).toLocaleDateString()
-                  ];
-                  csvRows.push(row.map(v => `"${v}"`).join(','));
-                });
-                
-                const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.setAttribute('href', url);
-                a.setAttribute('download', filename);
-                a.click();
-                window.URL.revokeObjectURL(url);
-              };
-
   {/* RESULT */}
           {activeMenu === "result" && (
             <div className={styles.resultContainer}>
@@ -1441,7 +1468,7 @@ export default function AdminDashboard() {
                           <td>{exam.duration_minutes} min</td>
                           <td>{exam.total_questions}</td>
                           <td>
-                            <button onClick={()=>setEditMode(true)}>Edit</button>
+                            <button onClick={() => handleEditExam(exam)}>Edit</button>
                           </td>
                         </tr>
                       )) : (
@@ -1459,8 +1486,11 @@ export default function AdminDashboard() {
                   <input value={minute} onChange={(e)=>setMinute(e.target.value)} placeholder="Minute"/>
                   <input type="date" value={date} onChange={(e)=>setDate(e.target.value)}/>
 
-                  <button className={styles.btn}>Save</button>
-                  <button className={styles.btn} onClick={()=>setEditMode(false)}>Back</button>
+                  <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                    <button className={styles.btn} onClick={handleUpdateExam}>Save</button>
+                    <button className={`${styles.btn} ${styles.logoutBtn}`} onClick={() => handleDeleteExam(editingExam.exam_id)}>Delete</button>
+                    <button className={styles.btn} onClick={() => { setEditMode(false); setEditingExam(null); }}>Back</button>
+                  </div>
                 </div>
               )}
             </>
