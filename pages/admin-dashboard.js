@@ -923,13 +923,47 @@ export default function AdminDashboard() {
             </>
           )}
 
+  {/* Helper function to download results as CSV */}
+              const downloadResultsCSV = (data, filename) => {
+                const headers = ['Roll No', 'Student Name', 'Email', 'Batch', 'Exam', 'Exam Type', 'Target Batch', 'Target Year', 'Percentage', 'Status', 'Correct Answers', 'Total Questions', 'Time Taken (min)', 'Attempted Date'];
+                const csvRows = [headers.join(',')];
+                
+                data.forEach(r => {
+                  const row = [
+                    r.roll_no || '',
+                    r.student_name || '',
+                    r.email || '',
+                    r.batch_name || '',
+                    r.exam_name || '',
+                    r.exam_type || '',
+                    r.target_batch_name || '',
+                    r.target_admission_year || '',
+                    r.percentage + '%',
+                    r.result_status || '',
+                    r.correct_answers || 0,
+                    r.total_questions || 0,
+                    Math.floor((r.time_taken_seconds || 0) / 60),
+                    new Date(r.submitted_at || r.start_time).toLocaleDateString()
+                  ];
+                  csvRows.push(row.map(v => `"${v}"`).join(','));
+                });
+                
+                const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.setAttribute('href', url);
+                a.setAttribute('download', filename);
+                a.click();
+                window.URL.revokeObjectURL(url);
+              };
+
   {/* RESULT */}
           {activeMenu === "result" && (
             <div className={styles.resultContainer}>
               <h2 style={{ textAlign: "center", marginBottom: "20px" }}>Result Management</h2>
 
               {/* Breadcrumbs for navigation */}
-              <div className={styles.breadcrumbs} style={{ marginBottom: "20px", display: "flex", gap: "10px", alignItems: "center" }}>
+              <div className={styles.breadcrumbs} style={{ marginBottom: "20px", display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
                 <span 
                   onClick={() => {
                     setResultViewLevel("batch");
@@ -946,7 +980,7 @@ export default function AdminDashboard() {
                 
                 {selectedBatch && (
                   <>
-                    <span>/</span>
+                    <span style={{ color: "#ccc" }}>/</span>
                     <span 
                       onClick={() => setResultViewLevel("year")} 
                       style={{ cursor: "pointer", color: resultViewLevel === "year" ? "black" : "#1e5bbf", fontWeight: "bold" }}
@@ -958,19 +992,19 @@ export default function AdminDashboard() {
 
                 {selectedYear && (
                   <>
-                    <span>/</span>
+                    <span style={{ color: "#ccc" }}>/</span>
                     <span 
                       onClick={() => setResultViewLevel("exam")} 
                       style={{ cursor: "pointer", color: resultViewLevel === "exam" ? "black" : "#1e5bbf", fontWeight: "bold" }}
                     >
-                      {selectedYear}
+                      Year {selectedYear}
                     </span>
                   </>
                 )}
 
                 {selectedExamName && (
                   <>
-                    <span>/</span>
+                    <span style={{ color: "#ccc" }}>/</span>
                     <span 
                       onClick={() => setResultViewLevel("student_list")} 
                       style={{ cursor: "pointer", color: resultViewLevel === "student_list" ? "black" : "#1e5bbf", fontWeight: "bold" }}
@@ -982,7 +1016,7 @@ export default function AdminDashboard() {
 
                 {selectedStudentResult && (
                   <>
-                    <span>/</span>
+                    <span style={{ color: "#ccc" }}>/</span>
                     <span style={{ fontWeight: "bold" }}>
                       {selectedStudentResult.result?.student_name}
                     </span>
@@ -992,77 +1026,218 @@ export default function AdminDashboard() {
 
               {/* BATCH VIEW */}
               {resultViewLevel === "batch" && (
-                <div className={styles.grid}>
-                  {[...new Set(results.map(r => r.target_batch_name || 'All Batches'))].map(batch => (
-                    <div 
-                      key={batch} 
-                      className={styles.card} 
-                      style={{ cursor: "pointer", textAlign: "center", padding: "30px" }}
-                      onClick={() => {
-                        setSelectedBatch(batch);
-                        setResultViewLevel("year");
+                <>
+                  <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "15px" }}>
+                    <button 
+                      onClick={() => downloadResultsCSV(results, `all_results_${new Date().toISOString().split('T')[0]}.csv`)}
+                      style={{ 
+                        background: "#28a745", 
+                        color: "white", 
+                        border: "none", 
+                        padding: "10px 20px", 
+                        borderRadius: "5px", 
+                        cursor: "pointer",
+                        fontWeight: "bold"
                       }}
                     >
-                      <h3 style={{ margin: 0 }}>{batch}</h3>
-                      <p style={{ margin: "10px 0 0", color: "#666" }}>
-                        {results.filter(r => (r.target_batch_name || 'All Batches') === batch).length} Results
-                      </p>
-                    </div>
-                  ))}
-                  {results.length === 0 && <p style={{ textAlign: "center", width: "100%" }}>No results available.</p>}
-                </div>
+                      Download All Results (CSV)
+                    </button>
+                  </div>
+                  <div className={styles.grid}>
+                    {[...new Set(results.map(r => r.target_batch_name || 'Other'))].filter(b => b && b !== 'Other' || results.filter(r => !r.target_batch_name).length > 0).map(batch => {
+                      const batchResults = results.filter(r => (r.target_batch_name || 'Other') === batch);
+                      const uniqueExams = [...new Set(batchResults.map(r => r.exam_id))].length;
+                      const uniqueYears = [...new Set(batchResults.map(r => r.target_admission_year || 'N/A'))];
+                      const avgScore = batchResults.length > 0 
+                        ? (batchResults.reduce((sum, r) => sum + r.percentage, 0) / batchResults.length).toFixed(1)
+                        : 0;
+                      return (
+                        <div 
+                          key={batch} 
+                          className={styles.card} 
+                          style={{ cursor: "pointer", textAlign: "center", padding: "25px" }}
+                          onClick={() => {
+                            setSelectedBatch(batch);
+                            setResultViewLevel("year");
+                          }}
+                        >
+                          <div style={{ fontSize: "48px", marginBottom: "10px" }}>
+                            {batch === 'NDA' ? '🎖️' : batch === 'SSC' ? '📋' : batch === 'Police' ? '👮' : batch === 'NEET' ? '🏥' : '📚'}
+                          </div>
+                          <h3 style={{ margin: "0 0 10px 0", color: "#1e5bbf" }}>{batch}</h3>
+                          <div style={{ display: "flex", justifyContent: "center", gap: "15px", marginBottom: "10px", fontSize: "12px", color: "#666" }}>
+                            <span>{uniqueYears.length} Year{uniqueYears.length !== 1 ? 's' : ''}</span>
+                            <span>|</span>
+                            <span>{uniqueExams} Test{uniqueExams !== 1 ? 's' : ''}</span>
+                            <span>|</span>
+                            <span>{batchResults.length} Result{batchResults.length !== 1 ? 's' : ''}</span>
+                          </div>
+                          <p style={{ margin: "0", fontWeight: "bold", color: avgScore >= 40 ? "#28a745" : "#dc3545" }}>
+                            Avg: {avgScore}%
+                          </p>
+                        </div>
+                      );
+                    })}
+                    {results.length === 0 && (
+                      <div style={{ textAlign: "center", width: "100%", padding: "50px" }}>
+                        <p style={{ color: "#666", fontSize: "18px" }}>No results available yet.</p>
+                        <p style={{ color: "#999" }}>Results will appear here after students complete exams.</p>
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
 
               {/* YEAR VIEW */}
               {resultViewLevel === "year" && (
-                <div className={styles.grid}>
-                  {[...new Set(results
-                    .filter(r => (r.target_batch_name || 'All Batches') === selectedBatch)
-                    .map(r => r.target_admission_year || 'N/A'))].map(year => (
-                    <div 
-                      key={year} 
-                      className={styles.card} 
-                      style={{ cursor: "pointer", textAlign: "center", padding: "30px" }}
+                <>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px" }}>
+                    <h3 style={{ margin: 0 }}>{selectedBatch} - Select Year</h3>
+                    <button 
                       onClick={() => {
-                        setSelectedYear(year);
-                        setResultViewLevel("exam");
+                        const yearResults = results.filter(r => (r.target_batch_name || 'Other') === selectedBatch);
+                        downloadResultsCSV(yearResults, `${selectedBatch}_all_years_${new Date().toISOString().split('T')[0]}.csv`);
+                      }}
+                      style={{ 
+                        background: "#28a745", 
+                        color: "white", 
+                        border: "none", 
+                        padding: "8px 16px", 
+                        borderRadius: "5px", 
+                        cursor: "pointer",
+                        fontSize: "12px"
                       }}
                     >
-                      <h3 style={{ margin: 0 }}>Target Year: {year}</h3>
-                      <p style={{ margin: "10px 0 0", color: "#666" }}>
-                        {results.filter(r => (r.target_batch_name || 'All Batches') === selectedBatch && (r.target_admission_year || 'N/A') === year).length} Results
-                      </p>
-                    </div>
-                  ))}
-                </div>
+                      Download {selectedBatch} Results (CSV)
+                    </button>
+                  </div>
+                  <div className={styles.grid}>
+                    {[...new Set(results
+                      .filter(r => (r.target_batch_name || 'Other') === selectedBatch)
+                      .map(r => r.target_admission_year || 'N/A'))].sort((a, b) => b - a).map(year => {
+                      const yearResults = results.filter(r => (r.target_batch_name || 'Other') === selectedBatch && String(r.target_admission_year || 'N/A') === String(year));
+                      const uniqueExams = [...new Set(yearResults.map(r => r.exam_id))].length;
+                      const avgScore = yearResults.length > 0 
+                        ? (yearResults.reduce((sum, r) => sum + r.percentage, 0) / yearResults.length).toFixed(1)
+                        : 0;
+                      const passCount = yearResults.filter(r => r.result_status === 'Pass').length;
+                      
+                      return (
+                        <div 
+                          key={year} 
+                          className={styles.card} 
+                          style={{ cursor: "pointer", textAlign: "center", padding: "25px" }}
+                          onClick={() => {
+                            setSelectedYear(year);
+                            setResultViewLevel("exam");
+                          }}
+                        >
+                          <div style={{ fontSize: "48px", marginBottom: "10px" }}>📅</div>
+                          <h3 style={{ margin: "0 0 10px 0", color: "#1e5bbf" }}>Year {year}</h3>
+                          <div style={{ display: "flex", justifyContent: "center", gap: "15px", marginBottom: "10px", fontSize: "12px", color: "#666" }}>
+                            <span>{uniqueExams} Test{uniqueExams !== 1 ? 's' : ''}</span>
+                            <span>|</span>
+                            <span>{yearResults.length} Result{yearResults.length !== 1 ? 's' : ''}</span>
+                          </div>
+                          <p style={{ margin: "0 0 5px 0", color: "#28a745", fontWeight: "bold" }}>
+                            {passCount} Pass
+                          </p>
+                          <p style={{ margin: 0, fontWeight: "bold", color: avgScore >= 40 ? "#28a745" : "#dc3545" }}>
+                            Avg: {avgScore}%
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
               )}
 
               {/* EXAM VIEW */}
               {resultViewLevel === "exam" && (
-                <div className={styles.grid}>
-                  {[...new Set(results
-                    .filter(r => (r.target_batch_name || 'All Batches') === selectedBatch && (r.target_admission_year || 'N/A') === selectedYear)
-                    .map(r => JSON.stringify({ id: r.exam_id, name: r.exam_name })))].map(examStr => {
-                    const exam = JSON.parse(examStr);
-                    return (
-                      <div 
-                        key={exam.id} 
-                        className={styles.card} 
-                        style={{ cursor: "pointer", textAlign: "center", padding: "30px" }}
-                        onClick={() => {
-                          setSelectedExamId(exam.id);
-                          setSelectedExamName(exam.name);
-                          setResultViewLevel("student_list");
-                        }}
-                      >
-                        <h3 style={{ margin: 0 }}>{exam.name}</h3>
-                        <p style={{ margin: "10px 0 0", color: "#666" }}>
-                          {results.filter(r => r.exam_id === exam.id && (r.target_batch_name || 'All Batches') === selectedBatch).length} Students Appeared
-                        </p>
-                      </div>
-                    );
-                  })}
-                </div>
+                <>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px" }}>
+                    <h3 style={{ margin: 0 }}>{selectedBatch} - Year {selectedYear}</h3>
+                    <button 
+                      onClick={() => {
+                        const examYearResults = results.filter(r => 
+                          (r.target_batch_name || 'Other') === selectedBatch && 
+                          String(r.target_admission_year || 'N/A') === String(selectedYear)
+                        );
+                        downloadResultsCSV(examYearResults, `${selectedBatch}_Year${selectedYear}_all_tests_${new Date().toISOString().split('T')[0]}.csv`);
+                      }}
+                      style={{ 
+                        background: "#28a745", 
+                        color: "white", 
+                        border: "none", 
+                        padding: "8px 16px", 
+                        borderRadius: "5px", 
+                        cursor: "pointer",
+                        fontSize: "12px"
+                      }}
+                    >
+                      Download All {selectedYear} Tests (CSV)
+                    </button>
+                  </div>
+                  <div className={styles.grid}>
+                    {[...new Set(results
+                      .filter(r => (r.target_batch_name || 'Other') === selectedBatch && String(r.target_admission_year || 'N/A') === String(selectedYear))
+                      .map(r => JSON.stringify({ id: r.exam_id, name: r.exam_name, exam_type: r.exam_type })))].map(examStr => {
+                      const exam = JSON.parse(examStr);
+                      const examResults = results.filter(r => 
+                        r.exam_id === exam.id && 
+                        (r.target_batch_name || 'Other') === selectedBatch && 
+                        String(r.target_admission_year || 'N/A') === String(selectedYear)
+                      );
+                      const avgScore = examResults.length > 0 
+                        ? (examResults.reduce((sum, r) => sum + r.percentage, 0) / examResults.length).toFixed(1)
+                        : 0;
+                      const passCount = examResults.filter(r => r.result_status === 'Pass').length;
+                      
+                      return (
+                        <div 
+                          key={exam.id} 
+                          className={styles.card} 
+                          style={{ cursor: "pointer", textAlign: "center", padding: "25px" }}
+                          onClick={() => {
+                            setSelectedExamId(exam.id);
+                            setSelectedExamName(exam.name);
+                            setResultViewLevel("student_list");
+                          }}
+                        >
+                          <div style={{ fontSize: "48px", marginBottom: "10px" }}>📝</div>
+                          <h3 style={{ margin: "0 0 10px 0", color: "#1e5bbf", fontSize: "16px" }}>{exam.name}</h3>
+                          <p style={{ margin: "0 0 5px 0", color: "#666", fontSize: "12px" }}>{exam.exam_type || 'General'}</p>
+                          <div style={{ display: "flex", justifyContent: "center", gap: "15px", marginBottom: "10px", fontSize: "12px", color: "#666" }}>
+                            <span>{examResults.length} Student{examResults.length !== 1 ? 's' : ''}</span>
+                            <span>|</span>
+                            <span>{passCount} Pass</span>
+                          </div>
+                          <p style={{ margin: 0, fontWeight: "bold", color: avgScore >= 40 ? "#28a745" : "#dc3545" }}>
+                            Avg: {avgScore}%
+                          </p>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              downloadResultsCSV(examResults, `${selectedBatch}_Year${selectedYear}_${exam.name}_results.csv`);
+                            }}
+                            style={{ 
+                              marginTop: "10px",
+                              background: "#007bff", 
+                              color: "white", 
+                              border: "none", 
+                              padding: "6px 12px", 
+                              borderRadius: "4px", 
+                              cursor: "pointer",
+                              fontSize: "11px"
+                            }}
+                          >
+                            Download Results
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
               )}
 
               {/* STUDENT LIST VIEW */}
@@ -1071,27 +1246,48 @@ export default function AdminDashboard() {
                   <div className={styles.resultStats} style={{ marginBottom: "20px" }}>
                     <div className={styles.statCard}>
                       <h4>Total Appeared</h4>
-                      <p>{results.filter(r => r.exam_id === selectedExamId && (r.target_batch_name || 'All Batches') === selectedBatch).length}</p>
+                      <p>{results.filter(r => r.exam_id === selectedExamId && (r.target_batch_name || 'Other') === selectedBatch).length}</p>
                     </div>
                     <div className={styles.statCard}>
                       <h4>Passed</h4>
-                      <p>{results.filter(r => r.exam_id === selectedExamId && (r.target_batch_name || 'All Batches') === selectedBatch && r.result_status === 'Pass').length}</p>
+                      <p style={{ color: "#28a745" }}>{results.filter(r => r.exam_id === selectedExamId && (r.target_batch_name || 'Other') === selectedBatch && r.result_status === 'Pass').length}</p>
                     </div>
                     <div className={styles.statCard}>
                       <h4>Failed</h4>
-                      <p>{results.filter(r => r.exam_id === selectedExamId && (r.target_batch_name || 'All Batches') === selectedBatch && r.result_status === 'Fail').length}</p>
+                      <p style={{ color: "#dc3545" }}>{results.filter(r => r.exam_id === selectedExamId && (r.target_batch_name || 'Other') === selectedBatch && r.result_status === 'Fail').length}</p>
                     </div>
                     <div className={styles.statCard}>
                       <h4>Average Score</h4>
                       <p>
                         {(() => {
-                          const examResults = results.filter(r => r.exam_id === selectedExamId && (r.target_batch_name || 'All Batches') === selectedBatch);
+                          const examResults = results.filter(r => r.exam_id === selectedExamId && (r.target_batch_name || 'Other') === selectedBatch);
                           if (examResults.length === 0) return '0%';
                           const avg = examResults.reduce((sum, r) => sum + r.percentage, 0) / examResults.length;
                           return `${avg.toFixed(1)}%`;
                         })()}
                       </p>
                     </div>
+                    <button 
+                      onClick={() => {
+                        const examResults = results.filter(r => 
+                          r.exam_id === selectedExamId && 
+                          (r.target_batch_name || 'Other') === selectedBatch
+                        );
+                        downloadResultsCSV(examResults, `${selectedBatch}_Year${selectedYear}_${selectedExamName}_results.csv`);
+                      }}
+                      style={{ 
+                        background: "#28a745", 
+                        color: "white", 
+                        border: "none", 
+                        padding: "10px 20px", 
+                        borderRadius: "5px", 
+                        cursor: "pointer",
+                        fontWeight: "bold",
+                        marginLeft: "auto"
+                      }}
+                    >
+                      Download Results (CSV)
+                    </button>
                   </div>
 
                   <table className={styles.table}>
@@ -1099,32 +1295,46 @@ export default function AdminDashboard() {
                       <tr>
                         <th>Roll No</th>
                         <th>Student Name</th>
-                        <th>Email</th>
-                        <th>Student Batch</th>
+                        <th>Mobile</th>
                         <th>Percentage</th>
+                        <th>Correct/Total</th>
                         <th>Status</th>
-                        <th>Attempted Date</th>
+                        <th>Time Taken</th>
+                        <th>Date</th>
                         <th>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {results
-                        .filter(r => r.exam_id === selectedExamId && (r.target_batch_name || 'All Batches') === selectedBatch)
-                        .map((result) => (
-                          <tr key={result.attempt_id}>
+                        .filter(r => r.exam_id === selectedExamId && (r.target_batch_name || 'Other') === selectedBatch)
+                        .sort((a, b) => b.percentage - a.percentage)
+                        .map((result, idx) => (
+                          <tr key={result.attempt_id} style={{ background: idx === 0 && result.percentage >= 40 ? '#e8f5e9' : '' }}>
                             <td><strong>{result.roll_no}</strong></td>
                             <td>{result.student_name}</td>
-                            <td>{result.email}</td>
-                            <td>{result.batch_name}</td>
-                            <td><span className={result.percentage >= 40 ? styles.pass : styles.fail}>{result.percentage}%</span></td>
-                            <td><span className={result.result_status === 'Pass' ? styles.pass : styles.fail}>{result.result_status}</span></td>
+                            <td>{result.mobile_no || 'N/A'}</td>
+                            <td>
+                              <span className={result.percentage >= 40 ? styles.pass : styles.fail} style={{ fontWeight: "bold", fontSize: "16px" }}>
+                                {result.percentage}%
+                              </span>
+                            </td>
+                            <td>{result.correct_answers || 0}/{result.total_questions || 0}</td>
+                            <td>
+                              <span className={result.result_status === 'Pass' ? styles.pass : styles.fail} style={{ padding: "4px 8px", borderRadius: "4px" }}>
+                                {result.result_status}
+                              </span>
+                            </td>
+                            <td>{Math.floor((result.time_taken_seconds || 0) / 60)}m {(result.time_taken_seconds || 0) % 60}s</td>
                             <td>{new Date(result.submitted_at || result.start_time).toLocaleDateString()}</td>
                             <td>
-                              <button className={styles.viewButton} onClick={() => viewResultDetails(result.attempt_id)}>View Full Report</button>
+                              <button className={styles.viewButton} onClick={() => viewResultDetails(result.attempt_id)}>View</button>
                               <button className={styles.deleteButton} onClick={() => deleteResult(result.attempt_id)}>Delete</button>
                             </td>
                           </tr>
                         ))}
+                      {results.filter(r => r.exam_id === selectedExamId && (r.target_batch_name || 'Other') === selectedBatch).length === 0 && (
+                        <tr><td colSpan="9" style={{ textAlign: "center", color: "#666" }}>No students have appeared for this exam yet.</td></tr>
+                      )}
                     </tbody>
                   </table>
                 </>
