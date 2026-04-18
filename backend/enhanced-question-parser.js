@@ -310,32 +310,40 @@ class EnhancedQuestionParser {
     addOption(line) {
         if (!this.currentQuestion) return;
         
-        // Handle Hindi format where options are combined like "A) शेरB) बाघC) हाथीD) घोड़ा"
-        // Split combined options into individual ones
-        const combinedPattern = /^([A-D])\)\s*(.+?)([A-D])\)\s*(.+?)([A-D])\)\s*(.+?)([A-D])\)\s*(.+)$/i;
-        const combinedMatch = line.match(combinedPattern);
+        // Handle Hindi format "A) शेरB) बाघC) हाथीD) घोड़ा" - all options on one line
+        // Split by finding A) B) C) D) markers
+        const allOptionsPattern = /^([A-D])\)\s*(\S+?)\s*([A-D])\)\s*(\S+?)\s*([A-D])\)\s*(\S+?)\s*([A-D])\)\s*(\S+)$/i;
+        const allMatch = line.match(allOptionsPattern);
         
-        if (combinedMatch) {
-            // Found combined options - parse each one
-            this.currentQuestion.options.push({ label: 'A', text: combinedMatch[2].trim() });
-            this.currentQuestion.options.push({ label: 'B', text: combinedMatch[4].trim() });
-            this.currentQuestion.options.push({ label: 'C', text: combinedMatch[6].trim() });
-            this.currentQuestion.options.push({ label: 'D', text: combinedMatch[8].trim() });
-            console.log('Added 4 combined options from Hindi format');
+        if (allMatch && allMatch[2] && allMatch[4] && allMatch[6]) {
+            this.currentQuestion.options.push({ label: 'A', text: allMatch[2] });
+            this.currentQuestion.options.push({ label: 'B', text: allMatch[4] });
+            this.currentQuestion.options.push({ label: 'C', text: allMatch[6] });
+            this.currentQuestion.options.push({ label: 'D', text: allMatch[8] });
+            console.log('Added 4 combined Hindi options:', allMatch[2], allMatch[4], allMatch[6], allMatch[8]);
             return;
         }
         
-        // Also try pattern with just A at start for partial: "A) शेरB) बाघC) हाथी"
-        const partialPattern = /^([A-D])\)\s*(.+?)([A-D])\)\s*(.+?)([A-D])\)\s*(.+)$/i;
-        const partialMatch = line.match(partialPattern);
-        if (partialMatch) {
-            this.currentQuestion.options.push({ label: 'A', text: partialMatch[2].trim() });
-            this.currentQuestion.options.push({ label: 'B', text: partialMatch[4].trim() });
-            this.currentQuestion.options.push({ label: 'C', text: partialMatch[6].trim() });
-            console.log('Added 3 combined options');
+        // Alternative: Split by regex looking for "A) " pattern at specific positions
+        // Match: letter)text where text can contain Hindi characters
+        const segments = [];
+        const segmentRegex = /([A-D])\)\s*([^(A-D)]+)/gi;
+        let match;
+        while ((match = segmentRegex.exec(line)) !== null) {
+            segments.push({ label: match[1].toUpperCase(), text: match[2].trim() });
+        }
+        
+        if (segments.length >= 2) {
+            for (const seg of segments) {
+                if (seg.label >= 'A' && seg.label <= 'D' && seg.text) {
+                    this.currentQuestion.options.push(seg);
+                }
+            }
+            console.log('Added', segments.length, 'options from combined line');
             return;
         }
         
+        // Try simple single option format
         let cleanOption = line;
         let optionLetter = null;
         
